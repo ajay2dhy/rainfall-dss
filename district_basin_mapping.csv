@@ -1,0 +1,862 @@
+district,basin
+Papum Pare,Brahmaputra Basin
+Tawang,Brahmaputra Basin
+Tirap,Brahmaputra Basin
+Upper Dibang Valley,Brahmaputra Basin
+Upper Siang,Brahmaputra Basin
+Upper Subansiri,Brahmaputra Basin
+West Kameng,Brahmaputra Basin
+West Siang,Brahmaputra Basin
+Barpeta,Brahmaputra Basin
+Bongaigaon,Brahmaputra Basin
+Cachar,Barak and others Basin
+Cachar,Brahmaputra Basin
+Darrang,Brahmaputra Basin
+Dhemaji,Brahmaputra Basin
+Dhuburi,Brahmaputra Basin
+Dibrugarh,Brahmaputra Basin
+Goalpara,Brahmaputra Basin
+Golaghat,Brahmaputra Basin
+Hailakandi,Barak and others Basin
+Jorhat,Brahmaputra Basin
+Kamrup,Brahmaputra Basin
+Karbi Anglong,Brahmaputra Basin
+Karimganj,Barak and others Basin
+Kokrajhar,Brahmaputra Basin
+Lakhimpur,Brahmaputra Basin
+Marigaon,Brahmaputra Basin
+Nagaon,Brahmaputra Basin
+Nalbari,Brahmaputra Basin
+North Cachar Hills,Barak and others Basin
+North Cachar Hills,Brahmaputra Basin
+Sibsagar,Brahmaputra Basin
+Sonitpur,Brahmaputra Basin
+Tinsukia,Brahmaputra Basin
+Araria,Ganga Basin
+Aurangabad,Ganga Basin
+Banka,Ganga Basin
+Begusarai,Ganga Basin
+Bhabua,Ganga Basin
+Bhagalpur,Ganga Basin
+Bhojpur,Ganga Basin
+Buxar,Ganga Basin
+Darbhanga,Ganga Basin
+Gaya,Ganga Basin
+Gopalganj,Ganga Basin
+Jamui,Ganga Basin
+Jehanabad,Ganga Basin
+Katihar,Ganga Basin
+Khagaria,Ganga Basin
+Kishanganj,Ganga Basin
+Lakhisarai,Ganga Basin
+Madhepura,Ganga Basin
+Madhubani,Ganga Basin
+Munger,Ganga Basin
+Muzaffarpur,Ganga Basin
+Nalanda,Ganga Basin
+Nawada,Ganga Basin
+Pashchim Champaran,Ganga Basin
+Patna,Ganga Basin
+Purba Champaran,Ganga Basin
+Purnia,Ganga Basin
+Rohtas,Ganga Basin
+Saharsa,Ganga Basin
+Samastipur,Ganga Basin
+Saran,Ganga Basin
+Sheikhpura,Ganga Basin
+Sheohar,Ganga Basin
+Tikamgarh,Ganga Basin
+Ujjain,Mahi Basin
+Ujjain,Ganga Basin
+Umaria,Narmada Basin
+Umaria,Ganga Basin
+Vidisha,Ganga Basin
+West Nimar,Tapi Basin
+West Nimar,Narmada Basin
+Ahmednagar,Krishna Basin
+Ahmednagar,West flowing rivers South of Tapi Basin
+Ahmednagar,Godavari Basin
+Akola,Godavari Basin
+Akola,Tapi Basin
+Amravati,Godavari Basin
+Amravati,Tapi Basin
+Aurangabad,Godavari Basin
+Aurangabad,Tapi Basin
+Bhandara,Godavari Basin
+Bid,Godavari Basin
+Bid,Krishna Basin
+Buldana,Godavari Basin
+Buldana,Tapi Basin
+Chandrapur,Godavari Basin
+Dhule,West flowing rivers South of Tapi Basin
+Dhule,Tapi Basin
+Dhule,Narmada Basin
+Garhchiroli,Godavari Basin
+Garhchiroli,Mahanadi Basin
+Gondiya,Godavari Basin
+Gondiya,Mahanadi Basin
+Greater Bombay,West flowing rivers South of Tapi Basin
+Hingoli,Godavari Basin
+Jalgaon,Godavari Basin
+Jalgaon,Tapi Basin
+Jalgaon,Narmada Basin
+Jalna,Godavari Basin
+Jalna,Tapi Basin
+Kolhapur,West flowing rivers South of Tapi Basin
+Kolhapur,Krishna Basin
+Latur,Krishna Basin
+Latur,Godavari Basin
+Nagpur,Godavari Basin
+Nanded,Godavari Basin
+Nandurbar,West flowing rivers South of Tapi Basin
+Nandurbar,Tapi Basin
+Nandurbar,Narmada Basin
+Nashik,West flowing rivers South of Tapi Basin
+Nashik,Godavari Basin
+Nashik,Tapi Basin
+Osmanabad,Krishna Basin
+Osmanabad,Godavari Basin
+Parbhani,Godavari Basin
+Balaghat,Godavari Basin
+Balaghat,Narmada Basin
+Barwani,Tapi Basin
+Barwani,Narmada Basin
+Betul,Godavari Basin
+Betul,Narmada Basin
+Betul,Tapi Basin
+Bhind,Ganga Basin
+Bhopal,Ganga Basin
+Bhopal,Narmada Basin
+Burhanpur,Tapi Basin
+Burhanpur,Narmada Basin
+Chhatarpur,Ganga Basin
+Chhindwara,Godavari Basin
+Chhindwara,Narmada Basin
+Damoh,Narmada Basin
+Damoh,Ganga Basin
+Karauli,Ganga Basin
+Kota,Ganga Basin
+Nagaur,Ganga Basin
+Nagaur,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Nagaur,Indus (Up to border) Basin
+Pali,Sabarmati Basin
+Pali,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Rajsamand,Ganga Basin
+Rajsamand,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Sawai Madhopur,Ganga Basin
+Sikar,Ganga Basin
+Sikar,Indus (Up to border) Basin
+Sikar,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Sirohi,Sabarmati Basin
+Sirohi,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Madurai,East flowing rivers South of Cauvery Basin
+Nagapattinam,Cauvery Basin
+Namakkal,Cauvery Basin
+Namakkal,East flowing rivers between Pennar and Cauvery Basin
+Nilgiris,West flowing rivers South of Tapi Basin
+Nilgiris,Cauvery Basin
+Perambalur,Cauvery Basin
+Perambalur,East flowing rivers between Pennar and Cauvery Basin
+Pudukkottai,East flowing rivers South of Cauvery Basin
+Pudukkottai,Cauvery Basin
+Ramanathapuram,East flowing rivers South of Cauvery Basin
+Salem,Cauvery Basin
+Salem,East flowing rivers between Pennar and Cauvery Basin
+Andaman Islands,Drainage Area of Andaman and Nicobar Islands Basin
+Nicobar Islands,Drainage Area of Andaman and Nicobar Islands Basin
+Adilabad,Godavari Basin
+Anantapur,Pennar Basin
+Anantapur,Krishna Basin
+Chittoor,East flowing rivers between Pennar and Cauvery Basin
+Chittoor,Pennar Basin
+Cuddapah,East flowing rivers between Pennar and Cauvery Basin
+Cuddapah,Pennar Basin
+East Godavari,Godavari Basin
+East Godavari,East flowing rivers between Mahanadi and Godavari Basin
+Guntur,East flowing rivers between Krishna and Pennar Basin
+Guntur,Krishna Basin
+Hyderabad,Krishna Basin
+Karimnagar,Krishna Basin
+Karimnagar,Godavari Basin
+Khammam,East flowing rivers between Godavari and Krishna Basin
+Khammam,Krishna Basin
+Khammam,Godavari Basin
+Krishna,East flowing rivers between Godavari and Krishna Basin
+Krishna,Krishna Basin
+Kurnool,Pennar Basin
+Kurnool,East flowing rivers between Krishna and Pennar Basin
+Kurnool,Krishna Basin
+Mahbubnagar,Krishna Basin
+Medak,Krishna Basin
+Medak,Godavari Basin
+Nalgonda,Krishna Basin
+Nellore,East flowing rivers between Pennar and Cauvery Basin
+Nellore,Pennar Basin
+Nellore,East flowing rivers between Krishna and Pennar Basin
+Nizamabad,Godavari Basin
+Prakasam,Pennar Basin
+Prakasam,East flowing rivers between Krishna and Pennar Basin
+Prakasam,Krishna Basin
+Rangareddi,Krishna Basin
+Rangareddi,Godavari Basin
+Srikakulam,East flowing rivers between Mahanadi and Godavari Basin
+Vishakhapatnam,Godavari Basin
+Vishakhapatnam,East flowing rivers between Mahanadi and Godavari Basin
+Vizianagaram,Godavari Basin
+Vizianagaram,East flowing rivers between Mahanadi and Godavari Basin
+Warangal,Krishna Basin
+Warangal,Godavari Basin
+West Godavari,East flowing rivers between Godavari and Krishna Basin
+West Godavari,Godavari Basin
+Changlang,Brahmaputra Basin
+East Kameng,Brahmaputra Basin
+East Siang,Brahmaputra Basin
+Kurung Kumey,Brahmaputra Basin
+Lohit,Brahmaputra Basin
+Lower Dibang Valley,Brahmaputra Basin
+Lower Subansiri,Brahmaputra Basin
+Sitamarhi,Ganga Basin
+Siwan,Ganga Basin
+Supaul,Ganga Basin
+Vaishali,Ganga Basin
+Chandigarh,Indus (Up to border) Basin
+Bastar,Godavari Basin
+Bastar,Mahanadi Basin
+Bilaspur,Mahanadi Basin
+Bilaspur,Narmada Basin
+Bilaspur,Ganga Basin
+Dantewada,Godavari Basin
+Dhamtari,Mahanadi Basin
+Dhamtari,Godavari Basin
+Durg,Mahanadi Basin
+Durg,Godavari Basin
+Janjgir-Champa,Mahanadi Basin
+Jashpur,Mahanadi Basin
+Jashpur,Brahmani and Baitarni Basin
+Jashpur,Ganga Basin
+Kanker,Mahanadi Basin
+Kanker,Godavari Basin
+Kawardha,Mahanadi Basin
+Kawardha,Narmada Basin
+Korba,Mahanadi Basin
+Korba,Ganga Basin
+Koriya,Mahanadi Basin
+Koriya,Ganga Basin
+Mahasamund,Mahanadi Basin
+Raigarh,Mahanadi Basin
+Raigarh,Ganga Basin
+Raipur,Mahanadi Basin
+Raj Nandgaon,Godavari Basin
+Raj Nandgaon,Mahanadi Basin
+Raj Nandgaon,Narmada Basin
+Surguja,Mahanadi Basin
+Surguja,Brahmani and Baitarni Basin
+Surguja,Ganga Basin
+Dadra and Nagar Haveli,West flowing rivers South of Tapi Basin
+Daman,West flowing rivers South of Tapi Basin
+Junagadh,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Delhi,Ganga Basin
+North Goa,West flowing rivers South of Tapi Basin
+South Goa,West flowing rivers South of Tapi Basin
+Ahmadabad,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Ahmadabad,Sabarmati Basin
+Amreli,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Anand,Mahi Basin
+Anand,Sabarmati Basin
+Banas Kantha,Sabarmati Basin
+Banas Kantha,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Bharuch,Tapi Basin
+Bharuch,Narmada Basin
+Bharuch,Mahi Basin
+Bhavnagar,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Bhavnagar,Sabarmati Basin
+Dahod,Narmada Basin
+Dahod,Mahi Basin
+Gandhinagar,Sabarmati Basin
+Jamnagar,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Kachchh,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Kheda,Mahi Basin
+Kheda,Sabarmati Basin
+Mahesana,Sabarmati Basin
+Mahesana,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Narmada,Tapi Basin
+Narmada,Narmada Basin
+Navsari,West flowing rivers South of Tapi Basin
+Panch Mahals,Narmada Basin
+Panch Mahals,Mahi Basin
+Panch Mahals,Sabarmati Basin
+Patan,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Porbandar,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Rajkot,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Rajkot,Sabarmati Basin
+Sabar Kantha,Mahi Basin
+Sabar Kantha,Sabarmati Basin
+Surat,West flowing rivers South of Tapi Basin
+Surat,Tapi Basin
+Surat,Narmada Basin
+Surendranagar,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Surendranagar,Sabarmati Basin
+The Dangs,West flowing rivers South of Tapi Basin
+The Dangs,Tapi Basin
+Vadodara,Narmada Basin
+Vadodara,Mahi Basin
+Valsad,West flowing rivers South of Tapi Basin
+Ambala,Indus (Up to border) Basin
+Bhiwani,Indus (Up to border) Basin
+Faridabad,Ganga Basin
+Fatehabad,Indus (Up to border) Basin
+Gurgaon,Ganga Basin
+Hisar,Indus (Up to border) Basin
+Jhajjar,Indus (Up to border) Basin
+Jhajjar,Ganga Basin
+Jind,Indus (Up to border) Basin
+Jind,Ganga Basin
+Kaithal,Indus (Up to border) Basin
+Karnal,Indus (Up to border) Basin
+Karnal,Ganga Basin
+Kurukshetra,Indus (Up to border) Basin
+Kurukshetra,Ganga Basin
+Mahendragarh,Indus (Up to border) Basin
+Mahendragarh,Ganga Basin
+Panchkula,Indus (Up to border) Basin
+Panipat,Indus (Up to border) Basin
+Panipat,Ganga Basin
+Rewari,Indus (Up to border) Basin
+Rewari,Ganga Basin
+Rohtak,Indus (Up to border) Basin
+Rohtak,Ganga Basin
+Sirsa,Indus (Up to border) Basin
+Sonepat,Indus (Up to border) Basin
+Sonepat,Ganga Basin
+Yamuna Nagar,Ganga Basin
+Yamuna Nagar,Indus (Up to border) Basin
+Bilaspur,Indus (Up to border) Basin
+Chamba,Indus (Up to border) Basin
+Hamirpur,Indus (Up to border) Basin
+Kangra,Indus (Up to border) Basin
+Kinnaur,Ganga Basin
+Kinnaur,Indus (Up to border) Basin
+Kullu,Indus (Up to border) Basin
+Lahul and Spiti,Indus (Up to border) Basin
+Mandi,Indus (Up to border) Basin
+Shimla,Ganga Basin
+Shimla,Indus (Up to border) Basin
+Sirmaur,Ganga Basin
+Sirmaur,Indus (Up to border) Basin
+Solan,Ganga Basin
+Solan,Indus (Up to border) Basin
+Una,Indus (Up to border) Basin
+Anantnag (Kashmir South),Indus (Up to border) Basin
+Bagdam,Indus (Up to border) Basin
+Baramula (Kashmir North),Indus (Up to border) Basin
+Doda,Indus (Up to border) Basin
+Jammu,Indus (Up to border) Basin
+Kargil,Indus (Up to border) Basin
+Kathua,Indus (Up to border) Basin
+Kupwara (Muzaffarabad),Indus (Up to border) Basin
+Ladakh (Leh),Indus (Up to border) Basin
+Pulwama,Indus (Up to border) Basin
+Punch,Indus (Up to border) Basin
+Rajauri,Indus (Up to border) Basin
+Srinagar,Indus (Up to border) Basin
+Udhampur,Indus (Up to border) Basin
+Bokaro,Subernarekha Basin
+Bokaro,Ganga Basin
+Chatra,Ganga Basin
+Deoghar,Ganga Basin
+Dhanbad,Ganga Basin
+Dumka,Ganga Basin
+Garhwa,Ganga Basin
+Giridih,Ganga Basin
+Godda,Ganga Basin
+Gumla,Brahmani and Baitarni Basin
+Gumla,Ganga Basin
+Hazaribag,Subernarekha Basin
+Hazaribag,Ganga Basin
+Jamtara,Ganga Basin
+Koderma,Ganga Basin
+Latehar,Brahmani and Baitarni Basin
+Latehar,Ganga Basin
+Lohardaga,Brahmani and Baitarni Basin
+Lohardaga,Ganga Basin
+Pakur,Ganga Basin
+Palamu,Ganga Basin
+Pashchim Singhbhum,Brahmani and Baitarni Basin
+Pashchim Singhbhum,Subernarekha Basin
+Purba Singhbhum,Subernarekha Basin
+Purba Singhbhum,Ganga Basin
+Ranchi,Brahmani and Baitarni Basin
+Ranchi,Subernarekha Basin
+Ranchi,Ganga Basin
+Sahibganj,Ganga Basin
+Saraikela Kharsawan,Subernarekha Basin
+Saraikela Kharsawan,Ganga Basin
+Simdega,Mahanadi Basin
+Simdega,Brahmani and Baitarni Basin
+Bagalkot,Krishna Basin
+Bangalore Rural,East flowing rivers between Pennar and Cauvery Basin
+Bangalore Rural,Cauvery Basin
+Bangalore Rural,Pennar Basin
+Bangalore Urban,East flowing rivers between Pennar and Cauvery Basin
+Bangalore Urban,Cauvery Basin
+Belgaum,West flowing rivers South of Tapi Basin
+Belgaum,Krishna Basin
+Bellary,Krishna Basin
+Bidar,Krishna Basin
+Bidar,Godavari Basin
+Bijapur,Krishna Basin
+Chamrajnagar,Cauvery Basin
+Chikmagalur,Cauvery Basin
+Chikmagalur,Krishna Basin
+Chikmagalur,West flowing rivers South of Tapi Basin
+Chitradurga,Krishna Basin
+Dakshin Kannad,Krishna Basin
+Dakshin Kannad,West flowing rivers South of Tapi Basin
+Davanagere,Krishna Basin
+Dharwad,Krishna Basin
+Dharwad,West flowing rivers South of Tapi Basin
+Gadag,Krishna Basin
+Gulbarga,Krishna Basin
+Gulbarga,Godavari Basin
+Hassan,Cauvery Basin
+Hassan,Krishna Basin
+Hassan,West flowing rivers South of Tapi Basin
+Haveri,Krishna Basin
+Haveri,West flowing rivers South of Tapi Basin
+Kodagu,Cauvery Basin
+Kodagu,West flowing rivers South of Tapi Basin
+Kolar,East flowing rivers between Pennar and Cauvery Basin
+Kolar,Pennar Basin
+Kolar,Cauvery Basin
+Koppal,Krishna Basin
+Mandya,Cauvery Basin
+Mysore,Cauvery Basin
+Raichur,Krishna Basin
+Shimoga,Krishna Basin
+Shimoga,West flowing rivers South of Tapi Basin
+Tumkur,Cauvery Basin
+Tumkur,Pennar Basin
+Tumkur,Krishna Basin
+Udupi,Krishna Basin
+Udupi,West flowing rivers South of Tapi Basin
+Uttar Kannand,Krishna Basin
+Uttar Kannand,West flowing rivers South of Tapi Basin
+Alappuzha,West flowing rivers South of Tapi Basin
+Ernakulam,West flowing rivers South of Tapi Basin
+Idukki,East flowing rivers South of Cauvery Basin
+Idukki,West flowing rivers South of Tapi Basin
+Idukki,Cauvery Basin
+Kannur,West flowing rivers South of Tapi Basin
+Kannur,Cauvery Basin
+Kasaragod,West flowing rivers South of Tapi Basin
+Kollam,East flowing rivers South of Cauvery Basin
+Kollam,West flowing rivers South of Tapi Basin
+Kottayam,West flowing rivers South of Tapi Basin
+Kozhikode,West flowing rivers South of Tapi Basin
+Kozhikode,Cauvery Basin
+Malappuram,West flowing rivers South of Tapi Basin
+Malappuram,Cauvery Basin
+Palakkad,West flowing rivers South of Tapi Basin
+Palakkad,Cauvery Basin
+Pattanamtitta,East flowing rivers South of Cauvery Basin
+Pattanamtitta,West flowing rivers South of Tapi Basin
+Thiruvananthapuram,East flowing rivers South of Cauvery Basin
+Thiruvananthapuram,West flowing rivers South of Tapi Basin
+Thrissur,West flowing rivers South of Tapi Basin
+Wayanad,West flowing rivers South of Tapi Basin
+Wayanad,Cauvery Basin
+Kavaratti,Drainage Area of Lakshadweep Islands Basin
+Anuppur,Mahanadi Basin
+Anuppur,Ganga Basin
+Ashoknagar,Ganga Basin
+Datia,Ganga Basin
+Dewas,Narmada Basin
+Dewas,Ganga Basin
+Dhar,Mahi Basin
+Dhar,Narmada Basin
+Dhar,Ganga Basin
+Dindori,Mahanadi Basin
+Dindori,Narmada Basin
+Dindori,Ganga Basin
+East Nimar,Tapi Basin
+East Nimar,Narmada Basin
+Guna,Ganga Basin
+Gwalior,Ganga Basin
+Harda,Tapi Basin
+Harda,Narmada Basin
+Hoshangabad,Narmada Basin
+Indore,Narmada Basin
+Indore,Ganga Basin
+Jabalpur,Narmada Basin
+Jabalpur,Ganga Basin
+Jhabua,Narmada Basin
+Jhabua,Mahi Basin
+Katni,Narmada Basin
+Katni,Ganga Basin
+Mandla,Godavari Basin
+Mandla,Narmada Basin
+Mandla,Ganga Basin
+Mandsaur,Ganga Basin
+Morena,Ganga Basin
+Narsinghpur,Narmada Basin
+Narsinghpur,Ganga Basin
+Neemuch,Mahi Basin
+Neemuch,Ganga Basin
+Panna,Ganga Basin
+Raisen,Narmada Basin
+Raisen,Ganga Basin
+Rajgarh,Ganga Basin
+Ratlam,Mahi Basin
+Ratlam,Ganga Basin
+Rewa,Ganga Basin
+Sagar,Narmada Basin
+Sagar,Ganga Basin
+Satna,Ganga Basin
+Sehore,Narmada Basin
+Sehore,Ganga Basin
+Seoni,Godavari Basin
+Seoni,Narmada Basin
+Shahdol,Mahanadi Basin
+Shahdol,Narmada Basin
+Shahdol,Ganga Basin
+Shajapur,Ganga Basin
+Sheopur,Ganga Basin
+Shivpuri,Ganga Basin
+Sidhi,Ganga Basin
+Pune,Krishna Basin
+Pune,West flowing rivers South of Tapi Basin
+Pune,Godavari Basin
+Raigarh,West flowing rivers South of Tapi Basin
+Raigarh,Krishna Basin
+Ratnagiri,West flowing rivers South of Tapi Basin
+Ratnagiri,Krishna Basin
+Sangli,Krishna Basin
+Sangli,West flowing rivers South of Tapi Basin
+Satara,West flowing rivers South of Tapi Basin
+Satara,Krishna Basin
+Sindhudurg,West flowing rivers South of Tapi Basin
+Sindhudurg,Krishna Basin
+Solapur,Krishna Basin
+Thane,Krishna Basin
+Thane,West flowing rivers South of Tapi Basin
+Thane,Godavari Basin
+Wardha,Godavari Basin
+Washim,Godavari Basin
+Washim,Tapi Basin
+Yavatmal,Godavari Basin
+Bishnupur,Minor rivers draining into Myanmar Basin
+Chandel,Minor rivers draining into Myanmar Basin
+Churachandpur,Barak and others Basin
+Churachandpur,Minor rivers draining into Myanmar Basin
+East Imphal,Barak and others Basin
+East Imphal,Minor rivers draining into Myanmar Basin
+Senapati,Barak and others Basin
+Senapati,Minor rivers draining into Myanmar Basin
+Senapati,Brahmaputra Basin
+Tamenglong,Barak and others Basin
+Tamenglong,Minor rivers draining into Myanmar Basin
+Thoubal,Minor rivers draining into Myanmar Basin
+Ukhrul,Minor rivers draining into Myanmar Basin
+West Imphal,Minor rivers draining into Myanmar Basin
+East Garo Hills,Barak and others Basin
+East Garo Hills,Brahmaputra Basin
+East Khasi Hills,Barak and others Basin
+East Khasi Hills,Brahmaputra Basin
+Jaintia Hills,Barak and others Basin
+Jaintia Hills,Brahmaputra Basin
+Ri-Bhoi,Brahmaputra Basin
+South Garo Hills,Barak and others Basin
+West Garo Hills,Barak and others Basin
+West Garo Hills,Brahmaputra Basin
+West Khasi Hills,Barak and others Basin
+West Khasi Hills,Brahmaputra Basin
+Aizawl,Minor rivers draining into Myanmar Basin
+Aizawl,Barak and others Basin
+Champhai,Minor rivers draining into Myanmar Basin
+Champhai,Barak and others Basin
+Kolasib,Barak and others Basin
+Lawngtlai,Minor rivers draining into Bangladesh Basin
+Lawngtlai,Minor rivers draining into Myanmar Basin
+Lunglei,Minor rivers draining into Bangladesh Basin
+Lunglei,Minor rivers draining into Myanmar Basin
+Lunglei,Barak and others Basin
+Mamit,Minor rivers draining into Bangladesh Basin
+Mamit,Barak and others Basin
+Saiha,Minor rivers draining into Myanmar Basin
+Serchhip,Minor rivers draining into Myanmar Basin
+Serchhip,Barak and others Basin
+Dimapur,Brahmaputra Basin
+Kohima,Barak and others Basin
+Kohima,Brahmaputra Basin
+Mokokchung,Brahmaputra Basin
+Mon,Minor rivers draining into Myanmar Basin
+Mon,Brahmaputra Basin
+Phek,Minor rivers draining into Myanmar Basin
+Phek,Brahmaputra Basin
+Tuensang,Minor rivers draining into Myanmar Basin
+Tuensang,Brahmaputra Basin
+Wokha,Brahmaputra Basin
+Zunheboto,Minor rivers draining into Myanmar Basin
+Zunheboto,Brahmaputra Basin
+Angul,Mahanadi Basin
+Angul,Brahmani and Baitarni Basin
+Baleshwar,Brahmani and Baitarni Basin
+Baleshwar,Subernarekha Basin
+Baleshwar,Ganga Basin
+Baragarh,Mahanadi Basin
+Bhadrak,Brahmani and Baitarni Basin
+Bolangir,Mahanadi Basin
+Boudh,Mahanadi Basin
+Cuttack,Mahanadi Basin
+Cuttack,Brahmani and Baitarni Basin
+Deogarh,Mahanadi Basin
+Deogarh,Brahmani and Baitarni Basin
+Dhenkanal,Mahanadi Basin
+Dhenkanal,Brahmani and Baitarni Basin
+Gajapati,East flowing rivers between Mahanadi and Godavari Basin
+Ganjam,East flowing rivers between Mahanadi and Godavari Basin
+Ganjam,Mahanadi Basin
+Jagatsinghpur,Mahanadi Basin
+Jajpur,Mahanadi Basin
+Jajpur,Brahmani and Baitarni Basin
+Jharsuguda,Mahanadi Basin
+Kalahandi,East flowing rivers between Mahanadi and Godavari Basin
+Kalahandi,Mahanadi Basin
+Kalahandi,Godavari Basin
+Kandhamal,East flowing rivers between Mahanadi and Godavari Basin
+Kandhamal,Mahanadi Basin
+Kendrapara,Mahanadi Basin
+Kendrapara,Brahmani and Baitarni Basin
+Keonjhar,Brahmani and Baitarni Basin
+Khordha,East flowing rivers between Mahanadi and Godavari Basin
+Khordha,Mahanadi Basin
+Koraput,Godavari Basin
+Koraput,East flowing rivers between Mahanadi and Godavari Basin
+Malkangiri,Godavari Basin
+Mayurbhanj,Brahmani and Baitarni Basin
+Mayurbhanj,Subernarekha Basin
+Nabarangpur,Mahanadi Basin
+Nabarangpur,Godavari Basin
+Nayagarh,East flowing rivers between Mahanadi and Godavari Basin
+Nayagarh,Mahanadi Basin
+Nuapada,Mahanadi Basin
+Puri,Mahanadi Basin
+Rayagada,East flowing rivers between Mahanadi and Godavari Basin
+Rayagada,Mahanadi Basin
+Rayagada,Godavari Basin
+Sambalpur,Mahanadi Basin
+Sambalpur,Brahmani and Baitarni Basin
+Sonepur,Mahanadi Basin
+Sundargarh,Brahmani and Baitarni Basin
+Sundargarh,Mahanadi Basin
+Karaikal,Cauvery Basin
+Mahe,West flowing rivers South of Tapi Basin
+Puducherry,East flowing rivers between Pennar and Cauvery Basin
+Yanam,Godavari Basin
+Amritsar,Indus (Up to border) Basin
+Bathinda,Indus (Up to border) Basin
+Faridkot,Indus (Up to border) Basin
+Fatehgarh Sahib,Indus (Up to border) Basin
+Firozpur,Indus (Up to border) Basin
+Gurdaspur,Indus (Up to border) Basin
+Hoshiarpur,Indus (Up to border) Basin
+Jalandhar,Indus (Up to border) Basin
+Kapurthala,Indus (Up to border) Basin
+Ludhiana,Indus (Up to border) Basin
+Mansa,Indus (Up to border) Basin
+Moga,Indus (Up to border) Basin
+Muktsar,Indus (Up to border) Basin
+Nawan Shehar,Indus (Up to border) Basin
+Patiala,Indus (Up to border) Basin
+Rupnagar,Indus (Up to border) Basin
+Sangrur,Indus (Up to border) Basin
+Ajmer,Ganga Basin
+Ajmer,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Alwar,Ganga Basin
+Alwar,Indus (Up to border) Basin
+Banswara,Mahi Basin
+Baran,Ganga Basin
+Barmer,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Barmer,Indus (Up to border) Basin
+Bharatpur,Ganga Basin
+Bhilwara,Ganga Basin
+Bhilwara,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Bikaner,Indus (Up to border) Basin
+Bundi,Ganga Basin
+Chittaurgarh,Mahi Basin
+Chittaurgarh,Ganga Basin
+Churu,Indus (Up to border) Basin
+Dausa,Ganga Basin
+Dhaulpur,Ganga Basin
+Dungarpur,Mahi Basin
+Dungarpur,Sabarmati Basin
+Ganganagar,Indus (Up to border) Basin
+Hanumangarh,Indus (Up to border) Basin
+Jaipur,Ganga Basin
+Jaipur,Indus (Up to border) Basin
+Jaisalmer,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Jaisalmer,Indus (Up to border) Basin
+Jalor,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Jhalawar,Ganga Basin
+Jhunjhunun,Indus (Up to border) Basin
+Jodhpur,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Jodhpur,Indus (Up to border) Basin
+Tonk,Ganga Basin
+Udaipur,Mahi Basin
+Udaipur,Sabarmati Basin
+Udaipur,West flowing rivers of Kutch and Saurashtra including Luni Basin
+Udaipur,Ganga Basin
+East,Brahmaputra Basin
+North Sikkim,Brahmaputra Basin
+South Sikkim,Brahmaputra Basin
+West Sikkim,Brahmaputra Basin
+Ariyalur,Cauvery Basin
+Ariyalur,East flowing rivers between Pennar and Cauvery Basin
+Chennai,East flowing rivers between Pennar and Cauvery Basin
+Coimbatore,West flowing rivers South of Tapi Basin
+Coimbatore,Cauvery Basin
+Cuddalore,Cauvery Basin
+Cuddalore,East flowing rivers between Pennar and Cauvery Basin
+Dharmapuri,East flowing rivers between Pennar and Cauvery Basin
+Dharmapuri,Cauvery Basin
+Dindigul,East flowing rivers South of Cauvery Basin
+Dindigul,Cauvery Basin
+Erode,Cauvery Basin
+Kancheepuram,East flowing rivers between Pennar and Cauvery Basin
+Kanniyakumari,East flowing rivers South of Cauvery Basin
+Kanniyakumari,West flowing rivers South of Tapi Basin
+Karur,Cauvery Basin
+Sivaganga,East flowing rivers South of Cauvery Basin
+Thanjavur,East flowing rivers South of Cauvery Basin
+Thanjavur,Cauvery Basin
+Theni,East flowing rivers South of Cauvery Basin
+Theni,West flowing rivers South of Tapi Basin
+Theni,Cauvery Basin
+Thiruvallur,East flowing rivers between Pennar and Cauvery Basin
+Thiruvarur,Cauvery Basin
+Thoothukudi,East flowing rivers South of Cauvery Basin
+Tiruchchirappalli,East flowing rivers South of Cauvery Basin
+Tiruchchirappalli,Cauvery Basin
+Tiruchchirappalli,East flowing rivers between Pennar and Cauvery Basin
+Tirunelveli Kattabo,East flowing rivers South of Cauvery Basin
+Tirunelveli Kattabo,West flowing rivers South of Tapi Basin
+Tiruvannamalai,East flowing rivers between Pennar and Cauvery Basin
+Vellore,East flowing rivers between Pennar and Cauvery Basin
+Villupuram,East flowing rivers between Pennar and Cauvery Basin
+Virudhunagar,East flowing rivers South of Cauvery Basin
+Virudhunagar,West flowing rivers South of Tapi Basin
+Dhalai,Barak and others Basin
+North Tripura,Minor rivers draining into Bangladesh Basin
+North Tripura,Barak and others Basin
+South Tripura,Minor rivers draining into Bangladesh Basin
+South Tripura,Barak and others Basin
+West Tripura,Minor rivers draining into Bangladesh Basin
+West Tripura,Barak and others Basin
+Agra,Ganga Basin
+Aligarh,Ganga Basin
+Allahabad,Ganga Basin
+Ambedkar Nagar,Ganga Basin
+Auraiya,Ganga Basin
+Azamgarh,Ganga Basin
+Badaun,Ganga Basin
+Baghpat,Ganga Basin
+Bahraich,Ganga Basin
+Ballia,Ganga Basin
+Balrampur,Ganga Basin
+Banda,Ganga Basin
+Bara Banki,Ganga Basin
+Bareilly,Ganga Basin
+Basti,Ganga Basin
+Bijnor,Ganga Basin
+Bulandshahr,Ganga Basin
+Chandauli,Ganga Basin
+Chitrakoot,Ganga Basin
+Deoria,Ganga Basin
+Etah,Ganga Basin
+Etawah,Ganga Basin
+Faizabad,Ganga Basin
+Farrukhabad,Ganga Basin
+Fatehpur,Ganga Basin
+Firozabad,Ganga Basin
+Gautam Buddha Nagar,Ganga Basin
+Ghaziabad,Ganga Basin
+Ghazipur,Ganga Basin
+Gonda,Ganga Basin
+Gorakhpur,Ganga Basin
+Hamirpur,Ganga Basin
+Hardoi,Ganga Basin
+Hathras,Ganga Basin
+Jalaun,Ganga Basin
+Jaunpur,Ganga Basin
+Jhansi,Ganga Basin
+Jyotiba Phule Nagar,Ganga Basin
+Kannauj,Ganga Basin
+Kanpur,Ganga Basin
+Kanpur Dehat,Ganga Basin
+Kaushambi,Ganga Basin
+Kushinagar,Ganga Basin
+Lakhimpur Kheri,Ganga Basin
+Lalitpur,Ganga Basin
+Lucknow,Ganga Basin
+Maharajganj,Ganga Basin
+Mahoba,Ganga Basin
+Mainpuri,Ganga Basin
+Mathura,Ganga Basin
+Mau,Ganga Basin
+Meerut,Ganga Basin
+Mirzapur,Ganga Basin
+Moradabad,Ganga Basin
+Muzaffarnagar,Ganga Basin
+Pilibhit,Ganga Basin
+Pratapgarh,Ganga Basin
+Rae Bareli,Ganga Basin
+Rampur,Ganga Basin
+Saharanpur,Ganga Basin
+Sant Kabir Nagar,Ganga Basin
+Sant Ravi Das Nagar,Ganga Basin
+Shahjahanpur,Ganga Basin
+Shravasti,Ganga Basin
+Siddharth Nagar,Ganga Basin
+Sitapur,Ganga Basin
+Sonbhadra,Ganga Basin
+Sultanpur,Ganga Basin
+Unnao,Ganga Basin
+Varanasi,Ganga Basin
+Almora,Ganga Basin
+Bageshwar,Ganga Basin
+Chamoli,Ganga Basin
+Champawat,Ganga Basin
+Dehra Dun,Ganga Basin
+Haridwar,Ganga Basin
+Naini Tal,Ganga Basin
+Pauri Garhwal,Ganga Basin
+Pithoragarh,Ganga Basin
+Rudra Prayag,Ganga Basin
+Tehri Garhwal,Ganga Basin
+Udham Singh Nagar,Ganga Basin
+Uttarkashi,Ganga Basin
+Uttarkashi,Indus (Up to border) Basin
+Bankura,Ganga Basin
+Barddhaman,Ganga Basin
+Birbhum,Ganga Basin
+Dakshin Dinajpur,Ganga Basin
+Darjiling,Ganga Basin
+Darjiling,Brahmaputra Basin
+East Midnapore,Subernarekha Basin
+East Midnapore,Ganga Basin
+Haora,Ganga Basin
+Hugli,Ganga Basin
+Jalpaiguri,Ganga Basin
+Jalpaiguri,Brahmaputra Basin
+Kochbihar,Brahmaputra Basin
+Kolkata,Ganga Basin
+Maldah,Ganga Basin
+Murshidabad,Ganga Basin
+Nadia,Ganga Basin
+North 24 Parganas,Ganga Basin
+Puruliya,Subernarekha Basin
+Puruliya,Ganga Basin
+South 24 Parganas,Ganga Basin
+Uttar Dinajpur,Ganga Basin
+West Midnapore,Subernarekha Basin
+West Midnapore,Ganga Basin

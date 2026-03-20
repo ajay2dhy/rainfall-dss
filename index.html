@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>India Rainfall DSS</title>
+
+<!-- PapaParse -->
+<script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
+
+<!-- Leaflet -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<style>
+body { font-family: Arial; }
+
+table { border-collapse: collapse; width: 100%; font-size: 14px; }
+th { background: #333; color: white; }
+td, th { padding: 6px; text-align: center; }
+tr:nth-child(even) { background: #f2f2f2; }
+
+#map { height: 500px; }
+
+#legend {
+    background: white;
+    padding: 10px;
+    width: 200px;
+    margin-top: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<h2>India Rainfall Forecast DSS</h2>
+
+<input type="text" id="searchBox" placeholder="Search District..." onkeyup="filterTable()">
+
+<select id="filterBox" onchange="applyFilter()">
+    <option value="ALL">All Districts</option>
+    <option value="ALERT">Only Alerts</option>
+    <option value="HEAVY">Heavy Rainfall (>50 mm)</option>
+</select>
+
+<select id="basinBox" onchange="applyBasinFilter()">
+    <option value="ALL">All Basins</option>
+</select>
+
+<br><br>
+
+<h3 id="summary"></h3>
+
+<h3>Rainfall Map</h3>
+<div id="map"></div>
+
+<div id="legend">
+<b>Rainfall (mm)</b><br>
+<span style="background:purple;color:white;">&nbsp;&nbsp;&nbsp;</span> >150<br>
+<span style="background:red;color:white;">&nbsp;&nbsp;&nbsp;</span> 75-150<br>
+<span style="background:orange;">&nbsp;&nbsp;&nbsp;</span> 30-75<br>
+<span style="background:yellow;">&nbsp;&nbsp;&nbsp;</span> 5-30<br>
+<span style="background:lightblue;">&nbsp;&nbsp;&nbsp;</span> <5
+</div>
+
+<br>
+
+<div id="table"></div>
+
+<script>
+
+// ---------------- GLOBAL ----------------
+let geojsonData;
+let rainfallMap = {};
+let districtBasinMap = {};
+let geoLayer;
+
+// ---------------- LOAD MAPPING ----------------
+Papa.parse("district_basin_mapping.csv", {
+    download: true,
+    header: true,
+    complete: function(results){
+
+        let data = results.data;
+
+        data.forEach(d => {
+            districtBasinMap[d.district] = d.basin;
+        });
+
+        console.log("Mapping loaded");
+    }
+});
+
+// ---------------- TABLE ----------------
+Papa.parse("India_24h_GFS_IMD_ICON_Rainfall.csv", {
+    download: true,
+    header: true,
+    complete: function(results) {
+
+        let data = results.data;
+
+        let alertCount = data.filter(d => d.alert_gfs_bc !== "NO ALERT").length;
+        document.getElementById("summary").innerHTML =
+            "Alert Districts: " + alertCount;
+
+        let html = "<table><tr>";
+
+        Object.keys(data[0]).forEach(k => html += "<th>"+k+"</th>");
+        html += "</tr>";
+
+        data.forEach(row => {
+            html += "<tr>";
+
+            Object.keys(row).forEach(k => {
+                let v = row[k];
+
+                if(k === "alert_gfs_bc"){
+                    if(v === "EXTREMELY HEAVY") html += "<td style='background:purple;color:white'>"+v+"</td>";
+                    else if(v === "VERY HEAVY") html += "<td style='background:red;color:white'>"+v+"</td>";
+                    else if(v === "HEAVY") html += "<td style='background:orange'>"+v+"</td>";
+                    else html += "<td>"+v+"</td>";
+                } else html += "<td>"+v+"</td>";
+            });
+
+            html += "</tr>";
+        });
+
+        html += "</table>";
+        document.getElementById("table").innerHTML = html;
+    }
+});
+
+// ---------------- SEARCH ----------------
+function filterTable() {
+    let val = document.getElementById("searchBox").value.toLowerCase();
+    document.querySelectorAll("table tr").forEach((r,i)=>{
+        if(i===0) return;
+        r.style.display = r.innerText.toLowerCase().includes(val)?"":"none";
+    });
+}
+
+// ---------------- FILTER ----------------
+function applyFilter() {
+    let f = document.getElementById("filterBox").value;
+
+    document.querySelectorAll("table tr").forEach((r,i)=>{
+        if(i===0) return;
+
+        let show = true;
+        let txt = r.innerText;
+
+        if(f==="ALERT" && !txt.includes("HEAVY")) show=false;
+
+        if(f==="HEAVY"){
+            let rain = parseFloat(r.children[5]?.innerText||0);
+            if(rain<50) show=false;
+        }
+
+        r.style.display = show?"":"none";
+    });
+}
+
+// ---------------- MAP ----------------
+var map = L.map('map').setView([22,80],5);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+// Load district + rainfall
+Promise.all([
+    fetch("india_districts.geojson").then(r=>r.json()),
+    fetch("India_24h_GFS_IMD_ICON_Rainfall.csv").then(r=>r.text())
+]).then(([geojson,csv])=>{
+
+    geojsonData=geojson;
+
+    let data=Papa.parse(csv,{header:true}).data;
+    data.forEach(d=>rainfallMap[d.district]=d);
+
+    // Populate basin dropdown
+    let basinSet = new Set(Object.values(districtBasinMap));
+    let dropdown = document.getElementById("basinBox");
+
+    basinSet.forEach(b=>{
+        if(b){
+            let opt=document.createElement("option");
+            opt.value=b;
+            opt.text=b;
+            dropdown.appendChild(opt);
+        }
+    });
+
+    drawMap("ALL");
+});
+
+// ---------------- COLOR ----------------
+function getColor(r){
+    if(r>150) return "purple";
+    if(r>75) return "red";
+    if(r>30) return "orange";
+    if(r>5) return "yellow";
+    return "lightblue";
+}
+
+// ---------------- DRAW MAP ----------------
+function drawMap(basin="ALL"){
+
+    if(geoLayer) map.removeLayer(geoLayer);
+
+    geoLayer = L.geoJSON(geojsonData, {
+
+        style: function(feature){
+
+            let name = feature.properties.NAME_2;
+            let d = rainfallMap[name];
+
+            if(basin !== "ALL"){
+                let basinName = districtBasinMap[name];
+                if(basinName !== basin){
+                    return { fillOpacity: 0, opacity: 0 };
+                }
+            }
+
+            let rain = d?.rain_gfs_bc_mm || 0;
+            let alert = d?.alert_gfs_bc;
+
+            return {
+                fillColor:getColor(rain),
+                weight:alert!=="NO ALERT"?2:1,
+                color:alert!=="NO ALERT"?"red":"black",
+                fillOpacity:0.7
+            };
+        },
+
+        onEachFeature: function(feature,layer){
+            let name=feature.properties.NAME_2;
+            let d=rainfallMap[name];
+
+            if(d){
+                layer.bindPopup(
+                    "<b>"+name+"</b><br>"+
+                    "Rainfall: "+d.rain_gfs_bc_mm+" mm<br>"+
+                    "Alert: "+d.alert_gfs_bc
+                );
+            }
+        }
+
+    }).addTo(map);
+}
+
+// ---------------- BASIN FILTER ----------------
+function applyBasinFilter(){
+    let b=document.getElementById("basinBox").value;
+    drawMap(b);
+}
+
+</script>
+
+</body>
+</html>
