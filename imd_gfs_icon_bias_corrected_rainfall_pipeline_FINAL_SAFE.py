@@ -33,7 +33,8 @@ STATE_COL = "NAME_1"
 IMD_DIR = "IMD_Rainfall"
 GFS_DIR = "GFS_TMP"
 ICON_DIR = "ICON_TMP"
-OUTPUT_DIR = "FINAL_OUTPUT"
+# OUTPUT_DIR = "FINAL_OUTPUT"
+OUTPUT_DIR = "."
 
 os.makedirs(IMD_DIR, exist_ok=True)
 os.makedirs(GFS_DIR, exist_ok=True)
