@@ -6,7 +6,7 @@ echo =====================================
 
 REM Activate Anaconda
 CALL "%USERPROFILE%\anaconda3\Scripts\activate.bat"
-CALL conda activate base
+CALL conda activate gfs
 
 REM Go to project directory
 G:
