@@ -29,4 +29,4 @@ echo =====================================
 echo   DSS Auto Update Completed
 echo =====================================
 
-exit
+pause
