@@ -1,100 +1,65 @@
 =====================================
   Rainfall DSS Auto Update Started
 =====================================
-
-STEP 1: Pull latest changes from GitHub
-error: cannot pull with rebase: You have unstaged changes.
-error: Please commit or stash them.
-
-STEP 2: Running rainfall pipeline
+Running rainfall pipeline...
 Using IMD rainfall data for year: 2025
 Downloading: rain for year 2025
-Traceback (most recent call last):
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connection.py", line 204, in _new_conn
-    sock = connection.create_connection(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\util\connection.py", line 85, in create_connection
-    raise err
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\util\connection.py", line 73, in create_connection
-    sock.connect(sa)
-TimeoutError: [WinError 10060] A connection attempt failed because the connected party did not properly respond after a period of time, or established connection failed because connected host has failed to respond
+Download Successful !!!
+GFS Forecast → 20260320 | Cycle 06 UTC
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f003.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f006.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f009.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f012.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f015.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f018.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f021.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f024.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f027.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f030.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f033.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f036.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f039.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f042.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f045.47d85.idx' older than GRIB file
+Ignoring index file 'GFS_TMP\\gfs.t06z.pgrb2.0p25.f048.47d85.idx' older than GRIB file
+ICON missing → fh003 (skipped)
+ICON missing → fh006 (skipped)
+ICON missing → fh009 (skipped)
+ICON missing → fh012 (skipped)
+ICON missing → fh015 (skipped)
+ICON missing → fh018 (skipped)
+ICON missing → fh021 (skipped)
+ICON missing → fh024 (skipped)
+ICON missing → fh027 (skipped)
+ICON missing → fh030 (skipped)
+ICON missing → fh033 (skipped)
+ICON missing → fh036 (skipped)
+ICON missing → fh039 (skipped)
+ICON missing → fh042 (skipped)
+ICON missing → fh045 (skipped)
+ICON missing → fh048 (skipped)
+G:\My Drive\RAINFALL_FORECAST_INDIA\rainfall_web\imd_gfs_icon_bias_corrected_rainfall_pipeline_FINAL_SAFE.py:369: FutureWarning: Downcasting object dtype arrays on .fillna, .ffill, .bfill is deprecated and will change in a future version. Call result.infer_objects(copy=False) instead. To opt-in to the future behavior, set `pd.set_option('future.no_silent_downcasting', True)`
+  .fillna(0.0)
 
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connectionpool.py", line 787, in urlopen
-    response = self._make_request(
-               ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connectionpool.py", line 488, in _make_request
-    raise new_e
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connectionpool.py", line 464, in _make_request
-    self._validate_conn(conn)
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connectionpool.py", line 1093, in _validate_conn
-    conn.connect()
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connection.py", line 759, in connect
-    self.sock = sock = self._new_conn()
-                       ^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connection.py", line 213, in _new_conn
-    raise ConnectTimeoutError(
-urllib3.exceptions.ConnectTimeoutError: (<HTTPSConnection(host='imdpune.gov.in', port=443) at 0x1f01d927810>, 'Connection to imdpune.gov.in timed out. (connect timeout=None)')
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\requests\adapters.py", line 644, in send
-    resp = conn.urlopen(
-           ^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\connectionpool.py", line 841, in urlopen
-    retries = retries.increment(
-              ^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\urllib3\util\retry.py", line 535, in increment
-    raise MaxRetryError(_pool, url, reason) from reason  # type: ignore[arg-type]
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-urllib3.exceptions.MaxRetryError: HTTPSConnectionPool(host='imdpune.gov.in', port=443): Max retries exceeded with url: /cmpg/Griddata/rainfall.php (Caused by ConnectTimeoutError(<HTTPSConnection(host='imdpune.gov.in', port=443) at 0x1f01d927810>, 'Connection to imdpune.gov.in timed out. (connect timeout=None)'))
-
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "G:\My Drive\RAINFALL_FORECAST_INDIA\rainfall_web\imd_gfs_icon_bias_corrected_rainfall_pipeline_FINAL_SAFE.py", line 180, in <module>
-    imd.get_data(
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\imdlib\core.py", line 702, in get_data
-    response = requests.post(url, data=data, proxies=proxies)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\requests\api.py", line 115, in post
-    return request("post", url, data=data, json=json, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\requests\api.py", line 59, in request
-    return session.request(method=method, url=url, **kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\requests\sessions.py", line 589, in request
-    resp = self.send(prep, **send_kwargs)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\requests\sessions.py", line 703, in send
-    r = adapter.send(request, **kwargs)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\PC\anaconda3\envs\gfs\Lib\site-packages\requests\adapters.py", line 665, in send
-    raise ConnectTimeout(e, request=request)
-requests.exceptions.ConnectTimeout: HTTPSConnectionPool(host='imdpune.gov.in', port=443): Max retries exceeded with url: /cmpg/Griddata/rainfall.php (Caused by ConnectTimeoutError(<HTTPSConnection(host='imdpune.gov.in', port=443) at 0x1f01d927810>, 'Connection to imdpune.gov.in timed out. (connect timeout=None)'))
-
-STEP 3: Adding updated files
-
-STEP 4: Committing changes
-[main 3c3f87d] Auto update
- 2 files changed, 597 insertions(+), 594 deletions(-)
- create mode 100644 India_24h_GFS_IMD_ICON_ALERTS.csv
-
-STEP 5: Pushing to GitHub
-Enumerating objects: 6, done.
-Counting objects: 100% (6/6), done.
-Delta compression using up to 32 threads
-Compressing objects: 100% (4/4), done.
-Writing objects: 100% (4/4), 19.82 KiB | 3.96 MiB/s, done.
-Total 4 (delta 1), reused 0 (delta 0), pack-reused 0 (from 0)
-remote: Resolving deltas: 100% (1/1), completed with 1 local object.
-To https://github.com/ajay2dhy/rainfall-dss.git
-   b0f0b3b..3c3f87d  main -> main
-
+==============================================
+FINAL SAFE GFS + ICON PIPELINE COMPLETED
+Total districts : 594
+Alert districts : 2
+==============================================
+Adding files...
+Committing...
+On branch main
+nothing to commit, working tree clean
+No changes
+Pulling latest...
+From https://github.com/ajay2dhy/rainfall-dss
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+Pushing...
+Everything up-to-date
 =====================================
   DSS Auto Update Completed
 =====================================
 Press any key to continue . . .
+
+
