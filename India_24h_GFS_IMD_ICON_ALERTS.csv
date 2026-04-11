@@ -1,2 +1,2 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_bc,alert_icon,date,cycle_utc
-Kerala,Ernakulam,3.375,10.186864899134594,3.0,10.125,0.0,MODERATE,NO ALERT,20260410,18
+Kerala,Ernakulam,3.625,10.186864899134594,2.810169627347474,10.186864899134594,0.0,MODERATE,NO ALERT,20260411,00
