@@ -1,2 +1,3 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_bc,alert_icon,date,cycle_utc
-Meghalaya,South Garo Hills,3.4583333134651184,11.48625354972332,3.0,10.374999940395355,0.0,MODERATE,NO ALERT,20260415,12
+Meghalaya,South Garo Hills,4.791666641831398,11.48625354972332,2.3971311880187933,11.48625354972332,0.0,MODERATE,NO ALERT,20260415,18
+Meghalaya,West Khasi Hills,3.8125,11.724642573771616,3.0,11.4375,0.0,MODERATE,NO ALERT,20260415,18
