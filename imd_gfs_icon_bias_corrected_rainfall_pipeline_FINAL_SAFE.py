@@ -259,30 +259,34 @@ for fh in FORECAST_HOURS:
     f = download_gfs(DATE, CYCLE, fh)
     tp = read_gfs_tp(f)
 
-    if prev_tp is not None:
+    if prev_tp is None:
+        rain_inc = tp.where(tp >= 0, 0)
+        from_hr = 0
+    else:
         rain_inc = (tp - prev_tp).where((tp - prev_tp) >= 0, 0)
+        from_hr = prev_hr
 
-        for _, row in districts.iterrows():
-            try:
-                clip = rain_inc.rio.clip(
-                    [row.geometry], districts.crs, drop=True
-                )
-                val = float(
-                    clip.mean(dim=["latitude", "longitude"]).values
-                )
-            except Exception:
-                val = 0.0
+    for _, row in districts.iterrows():
+        try:
+            clip = rain_inc.rio.clip(
+                [row.geometry], districts.crs, drop=True
+            )
+            val = float(
+                clip.mean(dim=["latitude", "longitude"]).values
+            )
+        except Exception:
+            val = 0.0
 
-            gfs_records.append({
-                "state": row[STATE_COL],
-                "district": row[DIST_COL],
-                "from_hour": prev_hr,
-                "to_hour": fh,
-                "rain_gfs_mm": val
-            })
+        gfs_records.append({
+            "state": row[STATE_COL],
+            "district": row[DIST_COL],
+            "from_hour": from_hr,
+            "to_hour": fh,
+            "rain_gfs_mm": val
+        })
 
-        if prev_file and os.path.exists(prev_file):
-            os.remove(prev_file)
+    if prev_file and os.path.exists(prev_file):
+        os.remove(prev_file)
 
     prev_tp = tp
     prev_file = f
@@ -315,6 +319,21 @@ def bias_factor(row):
 bc_df["bias_factor"] = bc_df.apply(bias_factor, axis=1)
 bc_df["rain_gfs_bc_mm"] = bc_df["rain_gfs_mm"] * bc_df["bias_factor"]
 
+gfs_distribution = gfs_df.merge(
+    bc_df[["state", "district", "bias_factor"]],
+    on=["state", "district"],
+    how="left"
+)
+gfs_distribution["bias_factor"] = (
+    gfs_distribution["bias_factor"]
+    .fillna(1.0)
+    .astype(float)
+)
+gfs_distribution["rain_gfs_bc_mm"] = (
+    gfs_distribution["rain_gfs_mm"] *
+    gfs_distribution["bias_factor"]
+)
+
 # ------------------------------------------------------------------
 # STEP 4: ICON FORECAST (SAFE, OPTIONAL)
 # ------------------------------------------------------------------
@@ -333,30 +352,34 @@ for fh in FORECAST_HOURS:
 
     tp = read_icon_tp(f)
 
-    if prev_tp is not None:
+    if prev_tp is None:
+        rain_inc = tp.where(tp >= 0, 0)
+        from_hr = 0
+    else:
         rain_inc = (tp - prev_tp).where((tp - prev_tp) >= 0, 0)
+        from_hr = prev_hr
 
-        for _, row in districts.iterrows():
-            try:
-                clip = rain_inc.rio.clip(
-                    [row.geometry], districts.crs, drop=True
-                )
-                val = float(
-                    clip.mean(dim=["latitude", "longitude"]).values
-                )
-            except Exception:
-                val = 0.0
+    for _, row in districts.iterrows():
+        try:
+            clip = rain_inc.rio.clip(
+                [row.geometry], districts.crs, drop=True
+            )
+            val = float(
+                clip.mean(dim=["latitude", "longitude"]).values
+            )
+        except Exception:
+            val = 0.0
 
-            icon_records.append({
-                "state": row[STATE_COL],
-                "district": row[DIST_COL],
-                "from_hour": prev_hr,
-                "to_hour": fh,
-                "rain_icon_mm": val
-            })
+        icon_records.append({
+            "state": row[STATE_COL],
+            "district": row[DIST_COL],
+            "from_hour": from_hr,
+            "to_hour": fh,
+            "rain_icon_mm": val
+        })
 
-        if prev_file and os.path.exists(prev_file):
-            os.remove(prev_file)
+    if prev_file and os.path.exists(prev_file):
+        os.remove(prev_file)
 
     prev_tp = tp
     prev_file = f
@@ -375,6 +398,9 @@ if not icon_df.empty:
         .reset_index()
     )
 else:
+    icon_df = pd.DataFrame(
+        columns=["state", "district", "from_hour", "to_hour", "rain_icon_mm"]
+    )
     icon_24h = pd.DataFrame(
         columns=["state", "district", "rain_icon_mm"]
     )
@@ -402,6 +428,48 @@ final_df["alert_icon"] = final_df["rain_icon_mm"].apply(imd_alert)
 final_df["date"] = DATE
 final_df["cycle_utc"] = CYCLE
 
+distribution_df = gfs_distribution.merge(
+    icon_df,
+    on=["state", "district", "from_hour", "to_hour"],
+    how="left"
+)
+distribution_df["rain_icon_mm"] = (
+    distribution_df["rain_icon_mm"]
+    .fillna(0.0)
+    .astype(float)
+)
+distribution_df["alert_gfs_bc"] = (
+    distribution_df["rain_gfs_bc_mm"].apply(imd_alert)
+)
+distribution_df["alert_icon"] = (
+    distribution_df["rain_icon_mm"].apply(imd_alert)
+)
+distribution_df["interval_label"] = (
+    distribution_df["from_hour"].astype(int).astype(str) +
+    "-" +
+    distribution_df["to_hour"].astype(int).astype(str) +
+    " h"
+)
+distribution_df["date"] = DATE
+distribution_df["cycle_utc"] = CYCLE
+distribution_df = distribution_df[
+    [
+        "state",
+        "district",
+        "from_hour",
+        "to_hour",
+        "interval_label",
+        "rain_gfs_mm",
+        "bias_factor",
+        "rain_gfs_bc_mm",
+        "rain_icon_mm",
+        "alert_gfs_bc",
+        "alert_icon",
+        "date",
+        "cycle_utc"
+    ]
+]
+
 # ------------------------------------------------------------------
 # STEP 6: SAVE OUTPUTS
 # ------------------------------------------------------------------
@@ -421,8 +489,14 @@ alert_df.to_csv(
     index=False
 )
 
+distribution_df.to_csv(
+    f"{OUTPUT_DIR}/India_3h_GFS_IMD_ICON_Rainfall.csv",
+    index=False
+)
+
 print("\n==============================================")
 print("FINAL SAFE GFS + ICON PIPELINE COMPLETED")
 print(f"Total districts : {final_df.shape[0]}")
 print(f"Alert districts : {alert_df.shape[0]}")
+print(f"3-hour records : {distribution_df.shape[0]}")
 print("==============================================")

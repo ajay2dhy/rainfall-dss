@@ -171,7 +171,7 @@ select:focus {
 }
 
 .table-scroll {
-    max-height: 674px;
+    max-height: 372px;
     overflow: auto;
     border: 1px solid var(--line);
     border-radius: 8px;
@@ -207,6 +207,12 @@ tbody tr:nth-child(even) {
 
 tbody tr:hover {
     background: #eef6ef;
+}
+
+tbody tr.selected-row {
+    background: #dff1e2;
+    outline: 2px solid rgba(31, 122, 77, 0.28);
+    outline-offset: -2px;
 }
 
 .num {
@@ -253,6 +259,78 @@ tbody tr:hover {
 .error {
     color: var(--red);
     font-weight: 700;
+}
+
+.hydro-panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 12px;
+}
+
+.selected-summary {
+    color: var(--muted);
+    font-size: 13px;
+    min-height: 18px;
+    margin: -2px 0 8px;
+}
+
+.chart-box {
+    height: 230px;
+    min-height: 230px;
+}
+
+.chart-surface {
+    width: 100%;
+    height: 100%;
+    border: 1px solid #edf0ed;
+    border-radius: 6px;
+    background: #fbfcfa;
+    overflow: hidden;
+}
+
+.chart-surface svg {
+    display: block;
+    width: 100%;
+    height: 100%;
+}
+
+.chart-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--muted);
+    font-size: 13px;
+    text-align: center;
+    padding: 16px;
+}
+
+.distribution-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+}
+
+button {
+    min-height: 34px;
+    border: 1px solid var(--green);
+    border-radius: 6px;
+    background: var(--green);
+    color: #ffffff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 10px;
+}
+
+button:disabled {
+    border-color: var(--line);
+    background: #e8ece8;
+    color: var(--muted);
+    cursor: not-allowed;
 }
 
 @media (max-width: 1000px) {
@@ -324,6 +402,18 @@ tbody tr:hover {
         </div>
 
         <div class="table-wrap">
+            <div class="hydro-panel">
+                <h2 class="section-title">3-hour Rainfall Distribution <small id="distributionNote"></small></h2>
+                <div class="selected-summary" id="selectedDistrictSummary">Select a district to view distribution.</div>
+                <div class="chart-box">
+                    <div id="distributionChart" class="chart-surface"></div>
+                </div>
+                <div class="distribution-actions">
+                    <button type="button" id="downloadDistrictDistribution" disabled>Download district CSV</button>
+                    <button type="button" id="downloadAllDistribution" disabled>Download all CSV</button>
+                </div>
+            </div>
+
             <h2 class="section-title">District Forecasts <small id="tableNote"></small></h2>
             <div class="table-scroll">
                 <table>
@@ -337,6 +427,7 @@ tbody tr:hover {
 
 <script>
 const DATA_CSV = "India_24h_GFS_IMD_ICON_Rainfall.csv";
+const DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Rainfall.csv";
 const BASIN_CSV = "district_basin_mapping.csv";
 const DISTRICTS_GEOJSON = "india_districts.geojson";
 const DATA_CACHE_BUSTER = Date.now().toString();
@@ -365,9 +456,12 @@ const alertRank = {
 let geojsonData = null;
 let forecastData = [];
 let filteredData = [];
+let distributionData = [];
 let rainfallMap = {};
+let distributionMap = {};
 let districtBasinMap = {};
 let geoLayer = null;
+let selectedDistrictKey = null;
 
 const elements = {
     status: document.getElementById("status"),
@@ -381,6 +475,11 @@ const elements = {
     maxRain: document.getElementById("maxRain"),
     topDistrict: document.getElementById("topDistrict"),
     mapNote: document.getElementById("mapNote"),
+    distributionNote: document.getElementById("distributionNote"),
+    selectedDistrictSummary: document.getElementById("selectedDistrictSummary"),
+    distributionChart: document.getElementById("distributionChart"),
+    downloadDistrictDistribution: document.getElementById("downloadDistrictDistribution"),
+    downloadAllDistribution: document.getElementById("downloadAllDistribution"),
     tableNote: document.getElementById("tableNote"),
     tableHead: document.getElementById("tableHead"),
     tableBody: document.getElementById("tableBody")
@@ -416,6 +515,15 @@ async function fetchCsv(url) {
         throw new Error(`${url} returned ${response.status}`);
     }
     return parseCsvText(await response.text());
+}
+
+async function fetchOptionalCsv(url) {
+    try {
+        return await fetchCsv(url);
+    } catch (error) {
+        console.warn(`${url} not available yet`, error);
+        return [];
+    }
 }
 
 async function fetchJson(url) {
@@ -465,6 +573,10 @@ function alertClass(alert) {
     return `alert-${normalizeAlert(alert).toLowerCase().replaceAll(" ", "-")}`;
 }
 
+function rowKey(row) {
+    return `${row.state || ""}||${row.district || ""}`;
+}
+
 function getColor(rain) {
     const value = toNumber(rain);
     if (value > 150) return "#7d3c98";
@@ -511,8 +623,15 @@ function buildTableRows(rows) {
             return `<td class="${className}">${escapeHtml(value)}</td>`;
         });
 
-        return `<tr>${cells.join("")}</tr>`;
+        const selectedClass = rowKey(row) === selectedDistrictKey ? " selected-row" : "";
+        return `<tr class="${selectedClass}" data-key="${escapeHtml(rowKey(row))}">${cells.join("")}</tr>`;
     }).join("");
+}
+
+function markSelectedTableRow() {
+    elements.tableBody.querySelectorAll("tr[data-key]").forEach(row => {
+        row.classList.toggle("selected-row", row.dataset.key === selectedDistrictKey);
+    });
 }
 
 function populateBasinOptions() {
@@ -543,6 +662,39 @@ function enrichForecastRows(rows) {
         });
 }
 
+function enrichDistributionRows(rows) {
+    return rows
+        .filter(row => row.district && row.state)
+        .map(row => ({
+            ...row,
+            from_hour: toNumber(row.from_hour),
+            to_hour: toNumber(row.to_hour),
+            interval_label: row.interval_label || `${row.from_hour}-${row.to_hour} h`,
+            rain_gfs_mm: toNumber(row.rain_gfs_mm),
+            bias_factor: row.bias_factor === "" ? "" : toNumber(row.bias_factor),
+            rain_gfs_bc_mm: toNumber(row.rain_gfs_bc_mm),
+            rain_icon_mm: toNumber(row.rain_icon_mm),
+            alert_gfs_bc: normalizeAlert(row.alert_gfs_bc),
+            alert_icon: normalizeAlert(row.alert_icon)
+        }))
+        .sort((a, b) => (
+            rowKey(a).localeCompare(rowKey(b)) ||
+            a.from_hour - b.from_hour ||
+            a.to_hour - b.to_hour
+        ));
+}
+
+function buildDistributionMap(rows) {
+    return rows.reduce((mapByDistrict, row) => {
+        const key = rowKey(row);
+        if (!mapByDistrict[key]) {
+            mapByDistrict[key] = [];
+        }
+        mapByDistrict[key].push(row);
+        return mapByDistrict;
+    }, {});
+}
+
 function updateSummary(rows) {
     const alertRows = rows.filter(hasAlert);
     const topRow = rows.reduce((best, row) => (
@@ -562,6 +714,12 @@ function updateSummary(rows) {
 
     elements.tableNote.textContent = `${rows.length.toLocaleString("en-IN")} shown`;
     elements.mapNote.textContent = `${rows.length.toLocaleString("en-IN")} active`;
+}
+
+function chooseDefaultDistrict(rows) {
+    return rows.reduce((best, row) => (
+        !best || row.rain_gfs_bc_mm > best.rain_gfs_bc_mm ? row : best
+    ), null) || rows[0] || null;
 }
 
 function matchesSearch(row, search) {
@@ -596,6 +754,15 @@ function applyFilters() {
     buildTableRows(filteredData);
     updateSummary(filteredData);
     drawMap();
+
+    const selectedVisible = filteredData.some(row => rowKey(row) === selectedDistrictKey);
+    if (!selectedVisible) {
+        selectDistrict(chooseDefaultDistrict(filteredData));
+    } else {
+        const selectedRow = filteredData.find(row => rowKey(row) === selectedDistrictKey);
+        renderDistribution(selectedRow);
+        markSelectedTableRow();
+    }
 }
 
 function drawMap() {
@@ -627,10 +794,11 @@ function drawMap() {
             }
 
             const alert = normalizeAlert(row.alert_gfs_bc);
+            const selected = rowKey(row) === selectedDistrictKey;
             return {
                 fillColor: getColor(row.rain_gfs_bc_mm),
-                weight: hasAlert(row) ? 2 : 1,
-                color: alert !== "NO ALERT" ? "#b72121" : "#293530",
+                weight: selected ? 3 : (hasAlert(row) ? 2 : 1),
+                color: selected ? "#111111" : (alert !== "NO ALERT" ? "#b72121" : "#293530"),
                 fillOpacity: active ? 0.72 : 0.06,
                 opacity: active ? 0.85 : 0.12
             };
@@ -652,21 +820,204 @@ function drawMap() {
                 `GFS alert: ${escapeHtml(row.alert_gfs_bc)}<br>` +
                 `ICON alert: ${escapeHtml(row.alert_icon)}`
             );
+            layer.on("click", () => selectDistrict(row));
         }
     }).addTo(map);
+}
+
+function selectDistrict(row) {
+    if (!row) {
+        selectedDistrictKey = null;
+        renderDistribution(null);
+        markSelectedTableRow();
+        return;
+    }
+
+    selectedDistrictKey = rowKey(row);
+    renderDistribution(row);
+    markSelectedTableRow();
+}
+
+function renderDistribution(row) {
+    if (!row) {
+        elements.selectedDistrictSummary.textContent = "No district selected.";
+        elements.distributionNote.textContent = "";
+        elements.downloadDistrictDistribution.disabled = true;
+        elements.downloadAllDistribution.disabled = distributionData.length === 0;
+        elements.distributionChart.innerHTML =
+            `<div class="chart-empty">Select a district to view the 3-hour distribution.</div>`;
+        return;
+    }
+
+    const records = distributionMap[rowKey(row)] || [];
+    elements.selectedDistrictSummary.textContent =
+        `${row.district}, ${row.state} | 24h bias-corrected total: ${formatNumber(row.rain_gfs_bc_mm)} mm`;
+    elements.distributionNote.textContent = records.length
+        ? `${records.length} intervals`
+        : "pending";
+    elements.downloadDistrictDistribution.disabled = records.length === 0;
+    elements.downloadAllDistribution.disabled = distributionData.length === 0;
+
+    if (!records.length) {
+        elements.distributionChart.innerHTML =
+            `<div class="chart-empty">3-hour distribution will appear after the next forecast run.</div>`;
+        return;
+    }
+
+    elements.distributionChart.innerHTML = buildDistributionSvg(records);
+}
+
+function buildDistributionSvg(records) {
+    const width = 760;
+    const height = 230;
+    const margin = { top: 18, right: 20, bottom: 48, left: 48 };
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const values = records.flatMap(record => [record.rain_gfs_bc_mm, record.rain_icon_mm]);
+    const maxRain = Math.max(1, ...values);
+    const tickCount = 4;
+    const barGap = 6;
+    const step = plotWidth / records.length;
+    const barWidth = Math.max(8, step - barGap);
+    const y = value => margin.top + plotHeight - (value / maxRain) * plotHeight;
+    const x = index => margin.left + index * step + (step - barWidth) / 2;
+    const iconPoints = records
+        .map((record, index) => `${margin.left + index * step + step / 2},${y(record.rain_icon_mm)}`)
+        .join(" ");
+
+    const yTicks = Array.from({ length: tickCount + 1 }, (_, index) => {
+        const value = (maxRain / tickCount) * index;
+        const yy = y(value);
+        return `
+            <line x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}" stroke="#edf0ed" />
+            <text x="${margin.left - 8}" y="${yy + 4}" text-anchor="end" font-size="10" fill="#5e6b66">${formatNumber(value, 1)}</text>
+        `;
+    }).join("");
+
+    const bars = records.map((record, index) => {
+        const barHeight = margin.top + plotHeight - y(record.rain_gfs_bc_mm);
+        return `
+            <rect x="${x(index)}" y="${y(record.rain_gfs_bc_mm)}" width="${barWidth}" height="${barHeight}" fill="rgba(31,122,77,0.72)">
+                <title>${escapeHtml(record.interval_label)} | GFS BC: ${formatNumber(record.rain_gfs_bc_mm)} mm | ICON: ${formatNumber(record.rain_icon_mm)} mm</title>
+            </rect>
+        `;
+    }).join("");
+
+    const labels = records.map((record, index) => {
+        const xx = margin.left + index * step + step / 2;
+        const label = record.to_hour % 6 === 0 || records.length <= 8 ? record.interval_label : `${record.to_hour}h`;
+        return `<text x="${xx}" y="${height - 20}" text-anchor="middle" font-size="10" fill="#5e6b66">${escapeHtml(label)}</text>`;
+    }).join("");
+
+    const iconLine = records.some(record => record.rain_icon_mm > 0)
+        ? `
+            <polyline points="${iconPoints}" fill="none" stroke="#c93a3a" stroke-width="2" />
+            ${records.map((record, index) => `<circle cx="${margin.left + index * step + step / 2}" cy="${y(record.rain_icon_mm)}" r="2.5" fill="#c93a3a" />`).join("")}
+        `
+        : "";
+
+    return `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="3-hour rainfall distribution chart">
+            <rect x="0" y="0" width="${width}" height="${height}" fill="#fbfcfa" />
+            ${yTicks}
+            ${bars}
+            ${iconLine}
+            <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${width - margin.right}" y2="${margin.top + plotHeight}" stroke="#9aa6a0" />
+            <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#9aa6a0" />
+            ${labels}
+            <text x="${margin.left}" y="13" font-size="11" fill="#1f7a4d">GFS bias-corrected bars</text>
+            <text x="${width - margin.right}" y="13" text-anchor="end" font-size="11" fill="#c93a3a">ICON line</text>
+        </svg>
+    `;
+}
+
+function csvEscape(value) {
+    const text = String(value ?? "");
+    return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+function recordsToCsv(records) {
+    const headers = [
+        "state",
+        "district",
+        "from_hour",
+        "to_hour",
+        "interval_label",
+        "rain_gfs_mm",
+        "bias_factor",
+        "rain_gfs_bc_mm",
+        "rain_icon_mm",
+        "alert_gfs_bc",
+        "alert_icon",
+        "date",
+        "cycle_utc"
+    ];
+
+    return [
+        headers.join(","),
+        ...records.map(record => headers.map(header => csvEscape(record[header])).join(","))
+    ].join("\n");
+}
+
+function downloadCsv(filename, records) {
+    if (!records.length) {
+        return;
+    }
+
+    const blob = new Blob([recordsToCsv(records)], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+}
+
+function safeFilename(value) {
+    return String(value || "district")
+        .replace(/[^a-z0-9]+/gi, "_")
+        .replace(/^_+|_+$/g, "")
+        .toLowerCase();
+}
+
+function downloadSelectedDistribution() {
+    if (!selectedDistrictKey) {
+        return;
+    }
+
+    const records = distributionMap[selectedDistrictKey] || [];
+    const district = records[0]?.district || selectedDistrictKey.split("||")[1];
+    downloadCsv(`${safeFilename(district)}_3h_rainfall_distribution.csv`, records);
+}
+
+function downloadAllDistribution() {
+    downloadCsv("india_3h_rainfall_distribution.csv", distributionData);
 }
 
 function bindEvents() {
     elements.searchBox.addEventListener("input", applyFilters);
     elements.filterBox.addEventListener("change", applyFilters);
     elements.basinBox.addEventListener("change", applyFilters);
+    elements.tableBody.addEventListener("click", event => {
+        const rowElement = event.target.closest("tr[data-key]");
+        if (!rowElement) {
+            return;
+        }
+        const row = forecastData.find(item => rowKey(item) === rowElement.dataset.key);
+        selectDistrict(row);
+    });
+    elements.downloadDistrictDistribution.addEventListener("click", downloadSelectedDistribution);
+    elements.downloadAllDistribution.addEventListener("click", downloadAllDistribution);
 }
 
 async function init() {
     try {
-        const [basinRows, rainfallRows, districts] = await Promise.all([
+        const [basinRows, rainfallRows, distributionRows, districts] = await Promise.all([
             fetchCsv(BASIN_CSV),
             fetchCsv(DATA_CSV),
+            fetchOptionalCsv(DISTRIBUTION_CSV),
             fetchJson(DISTRICTS_GEOJSON)
         ]);
 
@@ -678,7 +1029,9 @@ async function init() {
 
         geojsonData = districts;
         forecastData = enrichForecastRows(rainfallRows);
+        distributionData = enrichDistributionRows(distributionRows);
         rainfallMap = Object.fromEntries(forecastData.map(row => [row.district, row]));
+        distributionMap = buildDistributionMap(distributionData);
 
         populateBasinOptions();
         buildTableHead();
