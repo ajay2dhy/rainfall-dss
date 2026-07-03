@@ -60,23 +60,44 @@ def remove_cfgrib_indexes(grib):
             pass
 
 
+def gfs_file_url(date, cycle, fh):
+    fname = f"gfs.t{cycle}z.pgrb2.{RESOLUTION}.f{fh:03d}"
+    return f"{GFS_BASE_URL}/gfs.{date}/{cycle}/atmos/{fname}"
+
+
+def gfs_file_available(date, cycle, fh):
+    url = gfs_file_url(date, cycle, fh)
+    try:
+        r = requests.head(url, timeout=10, allow_redirects=True)
+        if r.status_code == 200:
+            return True
+        if r.status_code in (403, 405):
+            r = requests.get(url, stream=True, timeout=10)
+            r.close()
+            return r.status_code == 200
+    except requests.RequestException:
+        return False
+    return False
+
+
 def get_latest_gfs_datetime():
     today = datetime.utcnow()
-    yesterday = today - timedelta(days=1)
+    required_hours = [FORECAST_HOURS[0], FORECAST_HOURS[-1]]
 
-    for d in [today, yesterday]:
-        date_str = d.strftime("%Y%m%d")
+    for day_offset in range(3):
+        date_str = (today - timedelta(days=day_offset)).strftime("%Y%m%d")
         for cycle in ["18", "12", "06", "00"]:
-            url = f"{GFS_BASE_URL}/gfs.{date_str}/{cycle}/atmos/"
-            if requests.head(url, timeout=10).status_code == 200:
+            if all(
+                gfs_file_available(date_str, cycle, fh)
+                for fh in required_hours
+            ):
                 return date_str, cycle
 
-    raise RuntimeError("No GFS data available")
-
+    raise RuntimeError("No complete GFS cycle available")
 
 def download_gfs(date, cycle, fh):
     fname = f"gfs.t{cycle}z.pgrb2.{RESOLUTION}.f{fh:03d}"
-    url = f"{GFS_BASE_URL}/gfs.{date}/{cycle}/atmos/{fname}"
+    url = gfs_file_url(date, cycle, fh)
     path = os.path.join(GFS_DIR, fname)
 
     r = requests.get(url, stream=True, timeout=60)
@@ -145,10 +166,10 @@ def download_icon_safe(base_date, fh, out_dir):
                 with open(path, "wb") as f:
                     for c in r.iter_content(8192):
                         f.write(c)
-                print(f"ICON OK → {date} {run_hour} fh{fh:03d}")
+                print(f"ICON OK -> {date} {run_hour} fh{fh:03d}")
                 return path
 
-    print(f"ICON missing → fh{fh:03d} (skipped)")
+    print(f"ICON missing -> fh{fh:03d} (skipped)")
     return None
 
 
@@ -247,7 +268,7 @@ imd_df = pd.DataFrame(imd_means)
 # ------------------------------------------------------------------
 
 DATE, CYCLE = get_latest_gfs_datetime()
-print(f"GFS Forecast → {DATE} | Cycle {CYCLE} UTC")
+print(f"GFS Forecast -> {DATE} | Cycle {CYCLE} UTC")
 
 gfs_records = []
 
@@ -305,7 +326,7 @@ gfs_24h = (
 )
 
 # ------------------------------------------------------------------
-# STEP 3: BIAS CORRECTION (IMD → GFS)
+# STEP 3: BIAS CORRECTION (IMD -> GFS)
 # ------------------------------------------------------------------
 
 bc_df = gfs_24h.merge(imd_df, on=["state", "district"], how="left")
@@ -410,18 +431,10 @@ else:
 # ------------------------------------------------------------------
 
 final_df = bc_df.merge(icon_24h, on=["state", "district"], how="left")
-# final_df["rain_icon_mm"].fillna(0.0, inplace=True)
-# final_df["rain_icon_mm"] = (
-#     final_df["rain_icon_mm"]
-#     .fillna(0.0)
-#     .infer_objects(copy=False)
-# )
-final_df["rain_icon_mm"] = (
-    final_df["rain_icon_mm"]
-    .fillna(0.0)
-    .astype(float)
-)
-
+final_df["rain_icon_mm"] = pd.to_numeric(
+    final_df["rain_icon_mm"],
+    errors="coerce"
+).fillna(0.0)
 final_df["alert_gfs_bc"] = final_df["rain_gfs_bc_mm"].apply(imd_alert)
 final_df["alert_icon"] = final_df["rain_icon_mm"].apply(imd_alert)
 
@@ -433,11 +446,10 @@ distribution_df = gfs_distribution.merge(
     on=["state", "district", "from_hour", "to_hour"],
     how="left"
 )
-distribution_df["rain_icon_mm"] = (
-    distribution_df["rain_icon_mm"]
-    .fillna(0.0)
-    .astype(float)
-)
+distribution_df["rain_icon_mm"] = pd.to_numeric(
+    distribution_df["rain_icon_mm"],
+    errors="coerce"
+).fillna(0.0)
 distribution_df["alert_gfs_bc"] = (
     distribution_df["rain_gfs_bc_mm"].apply(imd_alert)
 )
