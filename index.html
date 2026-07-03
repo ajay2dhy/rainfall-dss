@@ -277,8 +277,8 @@ tbody tr.selected-row {
 }
 
 .chart-box {
-    height: 230px;
-    min-height: 230px;
+    height: 270px;
+    min-height: 270px;
 }
 
 .chart-surface {
@@ -431,6 +431,8 @@ const DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Rainfall.csv";
 const BASIN_CSV = "district_basin_mapping.csv";
 const DISTRICTS_GEOJSON = "india_districts.geojson";
 const DATA_CACHE_BUSTER = Date.now().toString();
+const FORECAST_TIME_ZONE = "Asia/Kolkata";
+const HOURS_TO_MS = 60 * 60 * 1000;
 
 const columns = [
     { key: "state", label: "State" },
@@ -549,6 +551,90 @@ function formatNumber(value, digits = 2) {
     });
 }
 
+const forecastDateFormatter = new Intl.DateTimeFormat("en-IN", {
+    timeZone: FORECAST_TIME_ZONE,
+    day: "2-digit",
+    month: "short"
+});
+
+const forecastDateTimeFormatter = new Intl.DateTimeFormat("en-IN", {
+    timeZone: FORECAST_TIME_ZONE,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+});
+
+const forecastTimeFormatter = new Intl.DateTimeFormat("en-IN", {
+    timeZone: FORECAST_TIME_ZONE,
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+});
+
+function normalizeMeridiem(value) {
+    return String(value).replace(/\b(am|pm)\b/gi, text => text.toUpperCase());
+}
+
+function forecastBaseDate(record) {
+    const dateText = String(record.date || "");
+    const cycleText = String(record.cycle_utc || "0").padStart(2, "0");
+
+    if (!/^\d{8}$/.test(dateText) || !/^\d{2}$/.test(cycleText)) {
+        return null;
+    }
+
+    return new Date(Date.UTC(
+        Number(dateText.slice(0, 4)),
+        Number(dateText.slice(4, 6)) - 1,
+        Number(dateText.slice(6, 8)),
+        Number(cycleText)
+    ));
+}
+
+function formatForecastDate(date) {
+    return normalizeMeridiem(forecastDateFormatter.format(date));
+}
+
+function formatForecastDateTime(date) {
+    return normalizeMeridiem(forecastDateTimeFormatter.format(date));
+}
+
+function formatForecastTime(date) {
+    return normalizeMeridiem(forecastTimeFormatter.format(date));
+}
+
+function forecastTiming(record) {
+    const baseDate = forecastBaseDate(record);
+
+    if (!baseDate) {
+        return {
+            start_time_ist: "",
+            end_time_ist: "",
+            time_window_ist: record.interval_label,
+            axis_date_label: "",
+            axis_time_label: record.interval_label,
+            cycle_time_ist: ""
+        };
+    }
+
+    const startDate = new Date(baseDate.getTime() + record.from_hour * HOURS_TO_MS);
+    const endDate = new Date(baseDate.getTime() + record.to_hour * HOURS_TO_MS);
+    const startLabel = formatForecastDateTime(startDate);
+    const endLabel = formatForecastDateTime(endDate);
+
+    return {
+        start_time_ist: startLabel,
+        end_time_ist: endLabel,
+        time_window_ist: `${startLabel} - ${endLabel} IST`,
+        axis_date_label: formatForecastDate(endDate),
+        axis_time_label: formatForecastTime(endDate),
+        cycle_time_ist: `${formatForecastDateTime(baseDate)} IST`
+    };
+}
+
 function normalizeAlert(value) {
     const text = String(value || "NO ALERT").trim().toUpperCase();
     return alertRank[text] === undefined ? "NO ALERT" : text;
@@ -664,18 +750,25 @@ function enrichForecastRows(rows) {
 function enrichDistributionRows(rows) {
     return rows
         .filter(row => row.district && row.state)
-        .map(row => ({
-            ...row,
-            from_hour: toNumber(row.from_hour),
-            to_hour: toNumber(row.to_hour),
-            interval_label: row.interval_label || `${row.from_hour}-${row.to_hour} h`,
-            rain_gfs_mm: toNumber(row.rain_gfs_mm),
-            bias_factor: row.bias_factor === "" ? "" : toNumber(row.bias_factor),
-            rain_gfs_bc_mm: toNumber(row.rain_gfs_bc_mm),
-            rain_icon_mm: toNumber(row.rain_icon_mm),
-            alert_gfs_bc: normalizeAlert(row.alert_gfs_bc),
-            alert_icon: normalizeAlert(row.alert_icon)
-        }))
+        .map(row => {
+            const enriched = {
+                ...row,
+                from_hour: toNumber(row.from_hour),
+                to_hour: toNumber(row.to_hour),
+                interval_label: row.interval_label || `${row.from_hour}-${row.to_hour} h`,
+                rain_gfs_mm: toNumber(row.rain_gfs_mm),
+                bias_factor: row.bias_factor === "" ? "" : toNumber(row.bias_factor),
+                rain_gfs_bc_mm: toNumber(row.rain_gfs_bc_mm),
+                rain_icon_mm: toNumber(row.rain_icon_mm),
+                alert_gfs_bc: normalizeAlert(row.alert_gfs_bc),
+                alert_icon: normalizeAlert(row.alert_icon)
+            };
+
+            return {
+                ...enriched,
+                ...forecastTiming(enriched)
+            };
+        })
         .sort((a, b) => (
             rowKey(a).localeCompare(rowKey(b)) ||
             a.from_hour - b.from_hour ||
@@ -849,10 +942,11 @@ function renderDistribution(row) {
     }
 
     const records = distributionMap[rowKey(row)] || [];
+    const cycleText = records[0]?.cycle_time_ist ? ` | Cycle: ${records[0].cycle_time_ist}` : "";
     elements.selectedDistrictSummary.textContent =
-        `${row.district}, ${row.state} | 24h bias-corrected total: ${formatNumber(row.rain_gfs_bc_mm)} mm`;
+        `${row.district}, ${row.state} | 24h bias-corrected total: ${formatNumber(row.rain_gfs_bc_mm)} mm${cycleText}`;
     elements.distributionNote.textContent = records.length
-        ? `${records.length} intervals`
+        ? `${records.length} intervals | IST valid time`
         : "pending";
     elements.downloadDistrictDistribution.disabled = records.length === 0;
     elements.downloadAllDistribution.disabled = distributionData.length === 0;
@@ -868,8 +962,8 @@ function renderDistribution(row) {
 
 function buildDistributionSvg(records) {
     const width = 760;
-    const height = 230;
-    const margin = { top: 18, right: 20, bottom: 48, left: 48 };
+    const height = 270;
+    const margin = { top: 18, right: 20, bottom: 78, left: 48 };
     const plotWidth = width - margin.left - margin.right;
     const plotHeight = height - margin.top - margin.bottom;
     const values = records.flatMap(record => [record.rain_gfs_bc_mm, record.rain_icon_mm]);
@@ -897,15 +991,19 @@ function buildDistributionSvg(records) {
         const barHeight = margin.top + plotHeight - y(record.rain_gfs_bc_mm);
         return `
             <rect x="${x(index)}" y="${y(record.rain_gfs_bc_mm)}" width="${barWidth}" height="${barHeight}" fill="rgba(31,122,77,0.72)">
-                <title>${escapeHtml(record.interval_label)} | GFS BC: ${formatNumber(record.rain_gfs_bc_mm)} mm | ICON: ${formatNumber(record.rain_icon_mm)} mm</title>
+                <title>${escapeHtml(record.time_window_ist || record.interval_label)} | GFS BC: ${formatNumber(record.rain_gfs_bc_mm)} mm | ICON: ${formatNumber(record.rain_icon_mm)} mm</title>
             </rect>
         `;
     }).join("");
 
     const labels = records.map((record, index) => {
         const xx = margin.left + index * step + step / 2;
-        const label = record.to_hour % 6 === 0 || records.length <= 8 ? record.interval_label : `${record.to_hour}h`;
-        return `<text x="${xx}" y="${height - 20}" text-anchor="middle" font-size="10" fill="#5e6b66">${escapeHtml(label)}</text>`;
+        return `
+            <text text-anchor="middle" font-size="9" fill="#5e6b66">
+                <tspan x="${xx}" y="${height - 45}">${escapeHtml(record.axis_date_label)}</tspan>
+                <tspan x="${xx}" y="${height - 30}">${escapeHtml(record.axis_time_label)}</tspan>
+            </text>
+        `;
     }).join("");
 
     const iconLine = records.some(record => record.rain_icon_mm > 0)
@@ -916,7 +1014,7 @@ function buildDistributionSvg(records) {
         : "";
 
     return `
-        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="3-hour rainfall distribution chart">
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="3-hour rainfall distribution chart with IST valid times">
             <rect x="0" y="0" width="${width}" height="${height}" fill="#fbfcfa" />
             ${yTicks}
             ${bars}
@@ -926,6 +1024,7 @@ function buildDistributionSvg(records) {
             ${labels}
             <text x="${margin.left}" y="13" font-size="11" fill="#1f7a4d">GFS bias-corrected bars</text>
             <text x="${width - margin.right}" y="13" text-anchor="end" font-size="11" fill="#c93a3a">ICON line</text>
+            <text x="${width / 2}" y="${height - 9}" text-anchor="middle" font-size="10" fill="#5e6b66">Forecast valid time (IST)</text>
         </svg>
     `;
 }
@@ -942,6 +1041,9 @@ function recordsToCsv(records) {
         "from_hour",
         "to_hour",
         "interval_label",
+        "start_time_ist",
+        "end_time_ist",
+        "time_window_ist",
         "rain_gfs_mm",
         "bias_factor",
         "rain_gfs_bc_mm",
