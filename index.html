@@ -1,257 +1,692 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>India Rainfall DSS</title>
 
-<!-- PapaParse -->
 <script src="https://cdn.jsdelivr.net/npm/papaparse@5.3.2/papaparse.min.js"></script>
-
-<!-- Leaflet -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
 <style>
-body { font-family: Arial; }
+:root {
+    --bg: #f7f8f3;
+    --panel: #ffffff;
+    --ink: #18211f;
+    --muted: #5e6b66;
+    --line: #d8ded8;
+    --green: #1f7a4d;
+    --amber: #f2b705;
+    --orange: #e67e22;
+    --red: #c93a3a;
+    --purple: #7d3c98;
+    --blue: #9bd7f0;
+}
 
-table { border-collapse: collapse; width: 100%; font-size: 14px; }
-th { background: #333; color: white; }
-td, th { padding: 6px; text-align: center; }
-tr:nth-child(even) { background: #f2f2f2; }
+* {
+    box-sizing: border-box;
+}
 
-#map { height: 500px; }
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Arial, Helvetica, sans-serif;
+}
 
-#legend {
-    background: white;
-    padding: 10px;
-    width: 200px;
-    margin-top: 10px;
+.app {
+    width: min(1440px, calc(100% - 32px));
+    margin: 0 auto;
+    padding: 22px 0 28px;
+}
+
+.topbar {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 14px;
+}
+
+h1 {
+    margin: 0;
+    font-size: 26px;
+    line-height: 1.15;
+}
+
+.meta {
+    color: var(--muted);
+    font-size: 13px;
+    text-align: right;
+}
+
+.controls {
+    display: grid;
+    grid-template-columns: minmax(220px, 1.4fr) minmax(160px, 0.8fr) minmax(180px, 1fr);
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+input,
+select {
+    width: 100%;
+    min-height: 40px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: var(--panel);
+    color: var(--ink);
+    font-size: 14px;
+    padding: 8px 10px;
+}
+
+input:focus,
+select:focus {
+    border-color: var(--green);
+    outline: 2px solid rgba(31, 122, 77, 0.18);
+}
+
+.stats {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.stat {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 10px 12px;
+    min-height: 70px;
+}
+
+.stat span {
+    display: block;
+    color: var(--muted);
+    font-size: 12px;
+    margin-bottom: 5px;
+}
+
+.stat strong {
+    display: block;
+    font-size: 22px;
+    line-height: 1.1;
+}
+
+.workspace {
+    display: grid;
+    grid-template-columns: minmax(360px, 0.95fr) minmax(420px, 1.05fr);
+    gap: 14px;
+    align-items: start;
+}
+
+.map-wrap,
+.table-wrap {
+    min-width: 0;
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 0 0 8px;
+    font-size: 17px;
+}
+
+.section-title small {
+    color: var(--muted);
+    font-size: 12px;
+    font-weight: normal;
+}
+
+#map {
+    height: 620px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #dbe8df;
+}
+
+.legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    margin-top: 8px;
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.legend span {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.swatch {
+    width: 14px;
+    height: 14px;
+    border: 1px solid rgba(0, 0, 0, 0.16);
+    border-radius: 3px;
+}
+
+.table-scroll {
+    max-height: 674px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+th,
+td {
+    border-bottom: 1px solid #edf0ed;
+    padding: 8px 9px;
+    text-align: left;
+    white-space: nowrap;
+}
+
+th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: #22312b;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+tbody tr:nth-child(even) {
+    background: #fafbf8;
+}
+
+tbody tr:hover {
+    background: #eef6ef;
+}
+
+.num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.alert {
+    border-radius: 4px;
+    color: #1b1b1b;
+    font-weight: 700;
+    padding: 4px 6px;
+}
+
+.alert-none {
+    color: var(--muted);
+    font-weight: normal;
+}
+
+.alert-moderate {
+    background: #f8df6d;
+}
+
+.alert-heavy {
+    background: var(--orange);
+}
+
+.alert-very-heavy {
+    background: var(--red);
+    color: #ffffff;
+}
+
+.alert-extremely-heavy {
+    background: var(--purple);
+    color: #ffffff;
+}
+
+.status {
+    margin: 10px 0 0;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.error {
+    color: var(--red);
+    font-weight: 700;
+}
+
+@media (max-width: 1000px) {
+    .workspace,
+    .controls,
+    .stats {
+        grid-template-columns: 1fr;
+    }
+
+    .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+    }
+
+    .meta {
+        text-align: left;
+    }
+
+    #map {
+        height: 520px;
+    }
 }
 </style>
 </head>
 
 <body>
+<main class="app">
+    <div class="topbar">
+        <div>
+            <h1>India Rainfall Forecast DSS</h1>
+            <div class="status" id="status">Loading forecast data...</div>
+        </div>
+        <div class="meta" id="meta"></div>
+    </div>
 
-<h2>India Rainfall Forecast DSS</h2>
+    <div class="controls">
+        <input type="search" id="searchBox" placeholder="Search district, state, or basin">
+        <select id="filterBox">
+            <option value="ALL">All districts</option>
+            <option value="ALERT">Only alerts</option>
+            <option value="MODERATE">Moderate and above</option>
+            <option value="HEAVY">Heavy and above</option>
+            <option value="RAIN50">Bias-corrected rainfall > 50 mm</option>
+        </select>
+        <select id="basinBox">
+            <option value="ALL">All basins</option>
+        </select>
+    </div>
 
-<input type="text" id="searchBox" placeholder="Search District..." onkeyup="filterTable()">
+    <section class="stats" aria-label="Forecast summary">
+        <div class="stat"><span>Total districts</span><strong id="totalCount">0</strong></div>
+        <div class="stat"><span>Visible districts</span><strong id="visibleCount">0</strong></div>
+        <div class="stat"><span>Alert districts</span><strong id="alertCount">0</strong></div>
+        <div class="stat"><span>Maximum rainfall</span><strong id="maxRain">0 mm</strong></div>
+        <div class="stat"><span>Top district</span><strong id="topDistrict">-</strong></div>
+    </section>
 
-<select id="filterBox" onchange="applyFilter()">
-    <option value="ALL">All Districts</option>
-    <option value="ALERT">Only Alerts</option>
-    <option value="HEAVY">Heavy Rainfall (>50 mm)</option>
-</select>
+    <section class="workspace">
+        <div class="map-wrap">
+            <h2 class="section-title">Rainfall Map <small id="mapNote"></small></h2>
+            <div id="map"></div>
+            <div class="legend">
+                <span><i class="swatch" style="background: var(--purple);"></i>&gt;150 mm</span>
+                <span><i class="swatch" style="background: var(--red);"></i>75-150 mm</span>
+                <span><i class="swatch" style="background: var(--orange);"></i>30-75 mm</span>
+                <span><i class="swatch" style="background: var(--amber);"></i>5-30 mm</span>
+                <span><i class="swatch" style="background: var(--blue);"></i>&lt;=5 mm</span>
+            </div>
+        </div>
 
-<select id="basinBox" onchange="applyBasinFilter()">
-    <option value="ALL">All Basins</option>
-</select>
-
-<br><br>
-
-<h3 id="summary"></h3>
-
-<h3>Rainfall Map</h3>
-<div id="map"></div>
-
-<div id="legend">
-<b>Rainfall (mm)</b><br>
-<span style="background:purple;color:white;">&nbsp;&nbsp;&nbsp;</span> >150<br>
-<span style="background:red;color:white;">&nbsp;&nbsp;&nbsp;</span> 75-150<br>
-<span style="background:orange;">&nbsp;&nbsp;&nbsp;</span> 30-75<br>
-<span style="background:yellow;">&nbsp;&nbsp;&nbsp;</span> 5-30<br>
-<span style="background:lightblue;">&nbsp;&nbsp;&nbsp;</span> <5
-</div>
-
-<br>
-
-<div id="table"></div>
+        <div class="table-wrap">
+            <h2 class="section-title">District Forecasts <small id="tableNote"></small></h2>
+            <div class="table-scroll">
+                <table>
+                    <thead id="tableHead"></thead>
+                    <tbody id="tableBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </section>
+</main>
 
 <script>
+const DATA_CSV = "India_24h_GFS_IMD_ICON_Rainfall.csv";
+const BASIN_CSV = "district_basin_mapping.csv";
+const DISTRICTS_GEOJSON = "india_districts.geojson";
 
-// ---------------- GLOBAL ----------------
-let geojsonData;
+const columns = [
+    { key: "state", label: "State" },
+    { key: "district", label: "District" },
+    { key: "basin", label: "Basin" },
+    { key: "rain_gfs_mm", label: "GFS mm", numeric: true },
+    { key: "imd_mean_mm", label: "IMD mean mm", numeric: true },
+    { key: "bias_factor", label: "Bias factor", numeric: true },
+    { key: "rain_gfs_bc_mm", label: "Bias-corrected mm", numeric: true },
+    { key: "rain_icon_mm", label: "ICON mm", numeric: true },
+    { key: "alert_gfs_bc", label: "GFS alert", alert: true },
+    { key: "alert_icon", label: "ICON alert", alert: true }
+];
+
+const alertRank = {
+    "NO ALERT": 0,
+    "MODERATE": 1,
+    "HEAVY": 2,
+    "VERY HEAVY": 3,
+    "EXTREMELY HEAVY": 4
+};
+
+let geojsonData = null;
+let forecastData = [];
+let filteredData = [];
 let rainfallMap = {};
 let districtBasinMap = {};
-let geoLayer;
+let geoLayer = null;
 
-// ---------------- LOAD MAPPING ----------------
-Papa.parse("district_basin_mapping.csv", {
-    download: true,
-    header: true,
-    complete: function(results){
+const elements = {
+    status: document.getElementById("status"),
+    meta: document.getElementById("meta"),
+    searchBox: document.getElementById("searchBox"),
+    filterBox: document.getElementById("filterBox"),
+    basinBox: document.getElementById("basinBox"),
+    totalCount: document.getElementById("totalCount"),
+    visibleCount: document.getElementById("visibleCount"),
+    alertCount: document.getElementById("alertCount"),
+    maxRain: document.getElementById("maxRain"),
+    topDistrict: document.getElementById("topDistrict"),
+    mapNote: document.getElementById("mapNote"),
+    tableNote: document.getElementById("tableNote"),
+    tableHead: document.getElementById("tableHead"),
+    tableBody: document.getElementById("tableBody")
+};
 
-        let data = results.data;
+const map = L.map("map", {
+    zoomControl: true,
+    preferCanvas: true
+}).setView([22, 80], 5);
 
-        data.forEach(d => {
-            districtBasinMap[d.district] = d.basin;
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 10,
+    attribution: "&copy; OpenStreetMap"
+}).addTo(map);
+
+function parseCsvText(text) {
+    return Papa.parse(text, {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: value => value.trim(),
+        transform: value => typeof value === "string" ? value.trim() : value
+    }).data;
+}
+
+async function fetchCsv(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`${url} returned ${response.status}`);
+    }
+    return parseCsvText(await response.text());
+}
+
+async function fetchJson(url) {
+    const response = await fetch(url);
+    if (!response.ok) {
+        throw new Error(`${url} returned ${response.status}`);
+    }
+    return response.json();
+}
+
+function toNumber(value) {
+    const number = Number(value);
+    return Number.isFinite(number) ? number : 0;
+}
+
+function formatNumber(value, digits = 2) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+        return "";
+    }
+    return number.toLocaleString("en-IN", {
+        maximumFractionDigits: digits,
+        minimumFractionDigits: number === 0 ? 0 : Math.min(digits, 1)
+    });
+}
+
+function normalizeAlert(value) {
+    const text = String(value || "NO ALERT").trim().toUpperCase();
+    return alertRank[text] === undefined ? "NO ALERT" : text;
+}
+
+function hasAlert(row) {
+    return Math.max(
+        alertRank[normalizeAlert(row.alert_gfs_bc)],
+        alertRank[normalizeAlert(row.alert_icon)]
+    ) > 0;
+}
+
+function maxAlertRank(row) {
+    return Math.max(
+        alertRank[normalizeAlert(row.alert_gfs_bc)],
+        alertRank[normalizeAlert(row.alert_icon)]
+    );
+}
+
+function alertClass(alert) {
+    return `alert-${normalizeAlert(alert).toLowerCase().replaceAll(" ", "-")}`;
+}
+
+function getColor(rain) {
+    const value = toNumber(rain);
+    if (value > 150) return "#7d3c98";
+    if (value > 75) return "#c93a3a";
+    if (value > 30) return "#e67e22";
+    if (value > 5) return "#f2b705";
+    return "#9bd7f0";
+}
+
+function escapeHtml(value) {
+    return String(value ?? "")
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#039;");
+}
+
+function buildTableHead() {
+    elements.tableHead.innerHTML = `<tr>${columns.map(col => `<th>${col.label}</th>`).join("")}</tr>`;
+}
+
+function buildTableRows(rows) {
+    if (!rows.length) {
+        elements.tableBody.innerHTML = `<tr><td colspan="${columns.length}">No districts match the selected filters.</td></tr>`;
+        return;
+    }
+
+    elements.tableBody.innerHTML = rows.map(row => {
+        const cells = columns.map(col => {
+            let value = row[col.key];
+            let className = col.numeric ? "num" : "";
+
+            if (col.numeric) {
+                value = formatNumber(value, col.key === "bias_factor" ? 3 : 2);
+            }
+
+            if (col.alert) {
+                const alert = normalizeAlert(value);
+                className = alert === "NO ALERT" ? "alert-none" : `alert ${alertClass(alert)}`;
+                value = alert;
+            }
+
+            return `<td class="${className}">${escapeHtml(value)}</td>`;
         });
 
-        console.log("Mapping loaded");
-    }
-});
+        return `<tr>${cells.join("")}</tr>`;
+    }).join("");
+}
 
-// ---------------- TABLE ----------------
-Papa.parse("India_24h_GFS_IMD_ICON_Rainfall.csv", {
-    download: true,
-    header: true,
-    complete: function(results) {
+function populateBasinOptions() {
+    const basins = Array.from(new Set(Object.values(districtBasinMap)))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
 
-        let data = results.data;
+    elements.basinBox.innerHTML = `<option value="ALL">All basins</option>` +
+        basins.map(basin => `<option value="${escapeHtml(basin)}">${escapeHtml(basin)}</option>`).join("");
+}
 
-        let alertCount = data.filter(d => d.alert_gfs_bc !== "NO ALERT").length;
-        document.getElementById("summary").innerHTML =
-            "Alert Districts: " + alertCount;
-
-        let html = "<table><tr>";
-
-        Object.keys(data[0]).forEach(k => html += "<th>"+k+"</th>");
-        html += "</tr>";
-
-        data.forEach(row => {
-            html += "<tr>";
-
-            Object.keys(row).forEach(k => {
-                let v = row[k];
-
-                if(k === "alert_gfs_bc"){
-                    if(v === "EXTREMELY HEAVY") html += "<td style='background:purple;color:white'>"+v+"</td>";
-                    else if(v === "VERY HEAVY") html += "<td style='background:red;color:white'>"+v+"</td>";
-                    else if(v === "HEAVY") html += "<td style='background:orange'>"+v+"</td>";
-                    else html += "<td>"+v+"</td>";
-                } else html += "<td>"+v+"</td>";
-            });
-
-            html += "</tr>";
+function enrichForecastRows(rows) {
+    return rows
+        .filter(row => row.district && row.state)
+        .map(row => {
+            const basin = districtBasinMap[row.district] || "";
+            return {
+                ...row,
+                basin,
+                alert_gfs_bc: normalizeAlert(row.alert_gfs_bc),
+                alert_icon: normalizeAlert(row.alert_icon),
+                rain_gfs_mm: toNumber(row.rain_gfs_mm),
+                imd_mean_mm: row.imd_mean_mm === "" ? "" : toNumber(row.imd_mean_mm),
+                bias_factor: row.bias_factor === "" ? "" : toNumber(row.bias_factor),
+                rain_gfs_bc_mm: toNumber(row.rain_gfs_bc_mm),
+                rain_icon_mm: toNumber(row.rain_icon_mm)
+            };
         });
+}
 
-        html += "</table>";
-        document.getElementById("table").innerHTML = html;
+function updateSummary(rows) {
+    const alertRows = rows.filter(hasAlert);
+    const topRow = rows.reduce((best, row) => (
+        !best || row.rain_gfs_bc_mm > best.rain_gfs_bc_mm ? row : best
+    ), null);
+
+    elements.totalCount.textContent = forecastData.length.toLocaleString("en-IN");
+    elements.visibleCount.textContent = rows.length.toLocaleString("en-IN");
+    elements.alertCount.textContent = alertRows.length.toLocaleString("en-IN");
+    elements.maxRain.textContent = topRow ? `${formatNumber(topRow.rain_gfs_bc_mm)} mm` : "0 mm";
+    elements.topDistrict.textContent = topRow ? topRow.district : "-";
+
+    const firstRow = forecastData[0];
+    elements.meta.textContent = firstRow
+        ? `Forecast ${firstRow.date || "-"} | Cycle ${firstRow.cycle_utc || "-"} UTC`
+        : "";
+
+    elements.tableNote.textContent = `${rows.length.toLocaleString("en-IN")} shown`;
+    elements.mapNote.textContent = `${rows.length.toLocaleString("en-IN")} active`;
+}
+
+function matchesSearch(row, search) {
+    if (!search) {
+        return true;
     }
-});
 
-// ---------------- SEARCH ----------------
-function filterTable() {
-    let val = document.getElementById("searchBox").value.toLowerCase();
-    document.querySelectorAll("table tr").forEach((r,i)=>{
-        if(i===0) return;
-        r.style.display = r.innerText.toLowerCase().includes(val)?"":"none";
-    });
+    return [row.district, row.state, row.basin]
+        .some(value => String(value || "").toLowerCase().includes(search));
 }
 
-// ---------------- FILTER ----------------
-function applyFilter() {
-    let f = document.getElementById("filterBox").value;
+function matchesAlertFilter(row, filter) {
+    const rank = maxAlertRank(row);
 
-    document.querySelectorAll("table tr").forEach((r,i)=>{
-        if(i===0) return;
-
-        let show = true;
-        let txt = r.innerText;
-
-        if(f==="ALERT" && !txt.includes("HEAVY")) show=false;
-
-        if(f==="HEAVY"){
-            let rain = parseFloat(r.children[5]?.innerText||0);
-            if(rain<50) show=false;
-        }
-
-        r.style.display = show?"":"none";
-    });
+    if (filter === "ALERT") return rank > 0;
+    if (filter === "MODERATE") return rank >= alertRank.MODERATE;
+    if (filter === "HEAVY") return rank >= alertRank.HEAVY;
+    if (filter === "RAIN50") return row.rain_gfs_bc_mm > 50;
+    return true;
 }
 
-// ---------------- MAP ----------------
-var map = L.map('map').setView([22,80],5);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+function applyFilters() {
+    const search = elements.searchBox.value.trim().toLowerCase();
+    const filter = elements.filterBox.value;
+    const basin = elements.basinBox.value;
 
-// Load district + rainfall
-Promise.all([
-    fetch("india_districts.geojson").then(r=>r.json()),
-    fetch("India_24h_GFS_IMD_ICON_Rainfall.csv").then(r=>r.text())
-]).then(([geojson,csv])=>{
-
-    geojsonData=geojson;
-
-    let data=Papa.parse(csv,{header:true}).data;
-    data.forEach(d=>rainfallMap[d.district]=d);
-
-    // Populate basin dropdown
-    let basinSet = new Set(Object.values(districtBasinMap));
-    let dropdown = document.getElementById("basinBox");
-
-    basinSet.forEach(b=>{
-        if(b){
-            let opt=document.createElement("option");
-            opt.value=b;
-            opt.text=b;
-            dropdown.appendChild(opt);
-        }
+    filteredData = forecastData.filter(row => {
+        const basinMatch = basin === "ALL" || row.basin === basin;
+        return basinMatch && matchesSearch(row, search) && matchesAlertFilter(row, filter);
     });
 
-    drawMap("ALL");
-});
-
-// ---------------- COLOR ----------------
-function getColor(r){
-    if(r>150) return "purple";
-    if(r>75) return "red";
-    if(r>30) return "orange";
-    if(r>5) return "yellow";
-    return "lightblue";
+    buildTableRows(filteredData);
+    updateSummary(filteredData);
+    drawMap();
 }
 
-// ---------------- DRAW MAP ----------------
-function drawMap(basin="ALL"){
+function drawMap() {
+    if (!geojsonData) {
+        return;
+    }
 
-    if(geoLayer) map.removeLayer(geoLayer);
+    if (geoLayer) {
+        map.removeLayer(geoLayer);
+    }
+
+    const activeDistricts = new Set(filteredData.map(row => row.district));
+    const hasFilters = filteredData.length !== forecastData.length;
 
     geoLayer = L.geoJSON(geojsonData, {
+        style: feature => {
+            const name = feature.properties.NAME_2;
+            const row = rainfallMap[name];
+            const active = !hasFilters || activeDistricts.has(name);
 
-        style: function(feature){
-
-            let name = feature.properties.NAME_2;
-            let d = rainfallMap[name];
-
-            if(basin !== "ALL"){
-                let basinName = districtBasinMap[name];
-                if(basinName !== basin){
-                    return { fillOpacity: 0, opacity: 0 };
-                }
+            if (!row) {
+                return {
+                    fillColor: "#cfd6d0",
+                    weight: 1,
+                    color: "#777",
+                    fillOpacity: active ? 0.45 : 0.06,
+                    opacity: active ? 0.8 : 0.1
+                };
             }
 
-            let rain = d?.rain_gfs_bc_mm || 0;
-            let alert = d?.alert_gfs_bc;
-
+            const alert = normalizeAlert(row.alert_gfs_bc);
             return {
-                fillColor:getColor(rain),
-                weight:alert!=="NO ALERT"?2:1,
-                color:alert!=="NO ALERT"?"red":"black",
-                fillOpacity:0.7
+                fillColor: getColor(row.rain_gfs_bc_mm),
+                weight: hasAlert(row) ? 2 : 1,
+                color: alert !== "NO ALERT" ? "#b72121" : "#293530",
+                fillOpacity: active ? 0.72 : 0.06,
+                opacity: active ? 0.85 : 0.12
             };
         },
+        onEachFeature: (feature, layer) => {
+            const name = feature.properties.NAME_2;
+            const row = rainfallMap[name];
 
-        onEachFeature: function(feature,layer){
-            let name=feature.properties.NAME_2;
-            let d=rainfallMap[name];
-
-            if(d){
-                layer.bindPopup(
-                    "<b>"+name+"</b><br>"+
-                    "Rainfall: "+d.rain_gfs_bc_mm+" mm<br>"+
-                    "Alert: "+d.alert_gfs_bc
-                );
+            if (!row) {
+                layer.bindPopup(`<b>${escapeHtml(name)}</b><br>No forecast row found`);
+                return;
             }
-        }
 
+            layer.bindPopup(
+                `<b>${escapeHtml(name)}</b><br>` +
+                `${escapeHtml(row.state)}<br>` +
+                `Basin: ${escapeHtml(row.basin || "-")}<br>` +
+                `Bias-corrected rainfall: ${formatNumber(row.rain_gfs_bc_mm)} mm<br>` +
+                `GFS alert: ${escapeHtml(row.alert_gfs_bc)}<br>` +
+                `ICON alert: ${escapeHtml(row.alert_icon)}`
+            );
+        }
     }).addTo(map);
 }
 
-// ---------------- BASIN FILTER ----------------
-function applyBasinFilter(){
-    let b=document.getElementById("basinBox").value;
-    drawMap(b);
+function bindEvents() {
+    elements.searchBox.addEventListener("input", applyFilters);
+    elements.filterBox.addEventListener("change", applyFilters);
+    elements.basinBox.addEventListener("change", applyFilters);
 }
 
-</script>
+async function init() {
+    try {
+        const [basinRows, rainfallRows, districts] = await Promise.all([
+            fetchCsv(BASIN_CSV),
+            fetchCsv(DATA_CSV),
+            fetchJson(DISTRICTS_GEOJSON)
+        ]);
 
+        districtBasinMap = Object.fromEntries(
+            basinRows
+                .filter(row => row.district && row.basin)
+                .map(row => [row.district, row.basin])
+        );
+
+        geojsonData = districts;
+        forecastData = enrichForecastRows(rainfallRows);
+        rainfallMap = Object.fromEntries(forecastData.map(row => [row.district, row]));
+
+        populateBasinOptions();
+        buildTableHead();
+        bindEvents();
+        applyFilters();
+
+        elements.status.textContent = "Data loaded successfully.";
+    } catch (error) {
+        console.error(error);
+        elements.status.innerHTML = `<span class="error">Unable to load dashboard data: ${escapeHtml(error.message)}</span>`;
+    }
+}
+
+init();
+</script>
 </body>
 </html>

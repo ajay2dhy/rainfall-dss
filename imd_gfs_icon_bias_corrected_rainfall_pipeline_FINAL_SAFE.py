@@ -14,6 +14,7 @@ Models  : GFS (IMD bias-corrected) + ICON (raw, optional)
 # ------------------------------------------------------------------
 
 import os
+import glob
 import requests
 import imdlib as imd
 import xarray as xr
@@ -51,6 +52,14 @@ ICON_BASE_URL = "https://opendata.dwd.de/weather/nwp/icon/grib"
 # UTILITY FUNCTIONS
 # ------------------------------------------------------------------
 
+def remove_cfgrib_indexes(grib):
+    for idx in glob.glob(f"{grib}*.idx"):
+        try:
+            os.remove(idx)
+        except OSError:
+            pass
+
+
 def get_latest_gfs_datetime():
     today = datetime.utcnow()
     yesterday = today - timedelta(days=1)
@@ -59,7 +68,7 @@ def get_latest_gfs_datetime():
         date_str = d.strftime("%Y%m%d")
         for cycle in ["18", "12", "06", "00"]:
             url = f"{GFS_BASE_URL}/gfs.{date_str}/{cycle}/atmos/"
-            if requests.head(url).status_code == 200:
+            if requests.head(url, timeout=10).status_code == 200:
                 return date_str, cycle
 
     raise RuntimeError("No GFS data available")
@@ -70,7 +79,7 @@ def download_gfs(date, cycle, fh):
     url = f"{GFS_BASE_URL}/gfs.{date}/{cycle}/atmos/{fname}"
     path = os.path.join(GFS_DIR, fname)
 
-    r = requests.get(url, stream=True)
+    r = requests.get(url, stream=True, timeout=60)
     r.raise_for_status()
 
     with open(path, "wb") as f:
@@ -81,6 +90,8 @@ def download_gfs(date, cycle, fh):
 
 
 def read_gfs_tp(grib):
+    remove_cfgrib_indexes(grib)
+
     ds = xr.open_dataset(
         grib,
         engine="cfgrib",
@@ -124,7 +135,12 @@ def download_icon_safe(base_date, fh, out_dir):
             url = f"{ICON_BASE_URL}/{run_hour}/tot_prec/{fname}"
             path = os.path.join(out_dir, fname)
 
-            r = requests.get(url, stream=True)
+            try:
+                r = requests.get(url, stream=True, timeout=30)
+            except requests.RequestException as exc:
+                print(f"ICON request failed -> fh{fh:03d}: {exc}")
+                continue
+
             if r.status_code == 200:
                 with open(path, "wb") as f:
                     for c in r.iter_content(8192):
@@ -137,6 +153,8 @@ def download_icon_safe(base_date, fh, out_dir):
 
 
 def read_icon_tp(grib):
+    remove_cfgrib_indexes(grib)
+
     ds = xr.open_dataset(
         grib,
         engine="cfgrib",
@@ -177,13 +195,21 @@ districts = gpd.read_file(DISTRICT_SHP).to_crs("EPSG:4326")
 last_complete_year = datetime.utcnow().year - 1
 print(f"Using IMD rainfall data for year: {last_complete_year}")
 
-imd.get_data(
-    "rain",
-    last_complete_year,
-    last_complete_year,
-    fn_format="yearwise",
-    file_dir=IMD_DIR
-)
+imd_grd_path = os.path.join(IMD_DIR, "rain", f"{last_complete_year}.grd")
+
+if os.path.exists(imd_grd_path) and os.path.getsize(imd_grd_path) > 0:
+    print(f"IMD rainfall file found -> {imd_grd_path}")
+    print("Skipping IMD download.")
+else:
+    print(f"IMD rainfall file missing -> {imd_grd_path}")
+    print("Downloading IMD rainfall data...")
+    imd.get_data(
+        "rain",
+        last_complete_year,
+        last_complete_year,
+        fn_format="yearwise",
+        file_dir=IMD_DIR
+    )
 
 imd_data = imd.open_data(
     "rain",
