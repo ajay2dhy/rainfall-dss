@@ -520,8 +520,7 @@ async function fetchCsv(url) {
 async function fetchOptionalCsv(url) {
     try {
         return await fetchCsv(url);
-    } catch (error) {
-        console.warn(`${url} not available yet`, error);
+    } catch {
         return [];
     }
 }
