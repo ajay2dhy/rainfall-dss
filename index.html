@@ -314,6 +314,44 @@ tbody tr.selected-row {
     margin-top: 10px;
 }
 
+.verification-controls {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) auto auto;
+    gap: 8px;
+    margin: 8px 0 10px;
+}
+
+.verification-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(90px, 1fr));
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.verification-stat {
+    border: 1px solid #edf0ed;
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.verification-stat span {
+    display: block;
+    color: var(--muted);
+    font-size: 11px;
+    margin-bottom: 4px;
+}
+
+.verification-stat strong {
+    display: block;
+    font-size: 16px;
+    line-height: 1.1;
+}
+
+.comparison-chart-box {
+    height: 310px;
+    min-height: 310px;
+}
+
 button {
     min-height: 34px;
     border: 1px solid var(--green);
@@ -336,7 +374,9 @@ button:disabled {
 @media (max-width: 1000px) {
     .workspace,
     .controls,
-    .stats {
+    .stats,
+    .verification-controls,
+    .verification-stats {
         grid-template-columns: 1fr;
     }
 
@@ -414,6 +454,30 @@ button:disabled {
                 </div>
             </div>
 
+            <div class="hydro-panel">
+                <h2 class="section-title">Daily Forecast vs IMD Observed <small id="verificationNote"></small></h2>
+                <div class="selected-summary" id="verificationSummary">Select a district to view daily verification.</div>
+                <div class="verification-controls">
+                    <select id="verificationPeriodBox">
+                        <option value="daily">Daily</option>
+                        <option value="weekly">Weekly</option>
+                        <option value="monthly">Monthly</option>
+                        <option value="yearly">Yearly</option>
+                    </select>
+                    <button type="button" id="downloadDistrictVerification" disabled>Download district CSV</button>
+                    <button type="button" id="downloadAllVerification" disabled>Download all CSV</button>
+                </div>
+                <div class="verification-stats">
+                    <div class="verification-stat"><span>Matched periods</span><strong id="verificationMatched">0</strong></div>
+                    <div class="verification-stat"><span>R2</span><strong id="verificationR2">-</strong></div>
+                    <div class="verification-stat"><span>Bias</span><strong id="verificationBias">-</strong></div>
+                    <div class="verification-stat"><span>RMSE</span><strong id="verificationRmse">-</strong></div>
+                </div>
+                <div class="chart-box comparison-chart-box">
+                    <div id="verificationChart" class="chart-surface"></div>
+                </div>
+            </div>
+
             <h2 class="section-title">District Forecasts <small id="tableNote"></small></h2>
             <div class="table-scroll">
                 <table>
@@ -428,6 +492,7 @@ button:disabled {
 <script>
 const DATA_CSV = "India_24h_GFS_IMD_ICON_Rainfall.csv";
 const DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Rainfall.csv";
+const VERIFICATION_CSV = "India_Daily_GFS_IMD_Rainfall_Verification.csv";
 const BASIN_CSV = "district_basin_mapping.csv";
 const DISTRICTS_GEOJSON = "india_districts.geojson";
 const DATA_CACHE_BUSTER = Date.now().toString();
@@ -459,8 +524,10 @@ let geojsonData = null;
 let forecastData = [];
 let filteredData = [];
 let distributionData = [];
+let verificationData = [];
 let rainfallMap = {};
 let distributionMap = {};
+let verificationMap = {};
 let districtBasinMap = {};
 let geoLayer = null;
 let selectedDistrictKey = null;
@@ -482,6 +549,16 @@ const elements = {
     distributionChart: document.getElementById("distributionChart"),
     downloadDistrictDistribution: document.getElementById("downloadDistrictDistribution"),
     downloadAllDistribution: document.getElementById("downloadAllDistribution"),
+    verificationNote: document.getElementById("verificationNote"),
+    verificationSummary: document.getElementById("verificationSummary"),
+    verificationPeriodBox: document.getElementById("verificationPeriodBox"),
+    verificationMatched: document.getElementById("verificationMatched"),
+    verificationR2: document.getElementById("verificationR2"),
+    verificationBias: document.getElementById("verificationBias"),
+    verificationRmse: document.getElementById("verificationRmse"),
+    verificationChart: document.getElementById("verificationChart"),
+    downloadDistrictVerification: document.getElementById("downloadDistrictVerification"),
+    downloadAllVerification: document.getElementById("downloadAllVerification"),
     tableNote: document.getElementById("tableNote"),
     tableHead: document.getElementById("tableHead"),
     tableBody: document.getElementById("tableBody")
@@ -540,6 +617,15 @@ function toNumber(value) {
     return Number.isFinite(number) ? number : 0;
 }
 
+function toOptionalNumber(value) {
+    if (value === null || value === undefined || value === "") {
+        return null;
+    }
+
+    const number = Number(value);
+    return Number.isFinite(number) ? number : null;
+}
+
 function formatNumber(value, digits = 2) {
     const number = Number(value);
     if (!Number.isFinite(number)) {
@@ -549,6 +635,15 @@ function formatNumber(value, digits = 2) {
         maximumFractionDigits: digits,
         minimumFractionDigits: number === 0 ? 0 : Math.min(digits, 1)
     });
+}
+
+function formatMetric(value, digits = 2, suffix = "") {
+    if (value === null || value === undefined || value === "") {
+        return "-";
+    }
+
+    const number = Number(value);
+    return Number.isFinite(number) ? `${formatNumber(number, digits)}${suffix}` : "-";
 }
 
 const forecastDateFormatter = new Intl.DateTimeFormat("en-IN", {
@@ -592,6 +687,25 @@ function forecastBaseDate(record) {
         Number(dateText.slice(6, 8)),
         Number(cycleText)
     ));
+}
+
+function parseCompactDate(value) {
+    const text = String(value || "");
+
+    if (!/^\d{8}$/.test(text)) {
+        return null;
+    }
+
+    return new Date(Date.UTC(
+        Number(text.slice(0, 4)),
+        Number(text.slice(4, 6)) - 1,
+        Number(text.slice(6, 8))
+    ));
+}
+
+function formatCompactDate(value) {
+    const date = parseCompactDate(value);
+    return date ? formatForecastDate(date) : String(value || "-");
 }
 
 function formatForecastDate(date) {
@@ -787,6 +901,204 @@ function buildDistributionMap(rows) {
     }, {});
 }
 
+function enrichVerificationRows(rows) {
+    return rows
+        .filter(row => row.district && row.state)
+        .map(row => ({
+            ...row,
+            forecast_issue_date: String(row.forecast_issue_date || ""),
+            cycle_utc: String(row.cycle_utc || "").padStart(2, "0"),
+            valid_date: String(row.valid_date || ""),
+            rain_forecast_daily_mm: toOptionalNumber(row.rain_forecast_daily_mm),
+            rain_gfs_24h_mm: toOptionalNumber(row.rain_gfs_24h_mm),
+            bias_factor: toOptionalNumber(row.bias_factor),
+            rain_gfs_bc_24h_mm: toOptionalNumber(row.rain_gfs_bc_24h_mm),
+            rain_icon_24h_mm: toOptionalNumber(row.rain_icon_24h_mm),
+            imd_observed_mm: toOptionalNumber(row.imd_observed_mm),
+            error_gfs_bc_mm: toOptionalNumber(row.error_gfs_bc_mm),
+            abs_error_gfs_bc_mm: toOptionalNumber(row.abs_error_gfs_bc_mm),
+            pct_error_gfs_bc: toOptionalNumber(row.pct_error_gfs_bc),
+            observed_status: row.observed_status || "PENDING"
+        }))
+        .sort((a, b) => (
+            rowKey(a).localeCompare(rowKey(b)) ||
+            a.valid_date.localeCompare(b.valid_date) ||
+            a.cycle_utc.localeCompare(b.cycle_utc)
+        ));
+}
+
+function buildVerificationMap(rows) {
+    return rows.reduce((mapByDistrict, row) => {
+        const key = rowKey(row);
+        if (!mapByDistrict[key]) {
+            mapByDistrict[key] = [];
+        }
+        mapByDistrict[key].push(row);
+        return mapByDistrict;
+    }, {});
+}
+
+function isoWeek(date) {
+    const workingDate = new Date(Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate()
+    ));
+    const day = workingDate.getUTCDay() || 7;
+    workingDate.setUTCDate(workingDate.getUTCDate() + 4 - day);
+    const yearStart = new Date(Date.UTC(workingDate.getUTCFullYear(), 0, 1));
+    const week = Math.ceil((((workingDate - yearStart) / 86400000) + 1) / 7);
+    return {
+        year: workingDate.getUTCFullYear(),
+        week
+    };
+}
+
+function periodForRecord(record, mode) {
+    const date = parseCompactDate(record.valid_date);
+    if (!date) {
+        return {
+            key: record.valid_date || "-",
+            label: record.valid_date || "-",
+            sortValue: record.valid_date || ""
+        };
+    }
+
+    const year = date.getUTCFullYear();
+    const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+
+    if (mode === "yearly") {
+        return {
+            key: String(year),
+            label: String(year),
+            sortValue: `${year}`
+        };
+    }
+
+    if (mode === "monthly") {
+        return {
+            key: `${year}-${month}`,
+            label: `${date.toLocaleString("en-IN", { month: "short", timeZone: "UTC" })} ${year}`,
+            sortValue: `${year}-${month}`
+        };
+    }
+
+    if (mode === "weekly") {
+        const week = isoWeek(date);
+        const weekText = String(week.week).padStart(2, "0");
+        return {
+            key: `${week.year}-W${weekText}`,
+            label: `${week.year} W${weekText}`,
+            sortValue: `${week.year}-W${weekText}`
+        };
+    }
+
+    return {
+        key: record.valid_date,
+        label: formatCompactDate(record.valid_date),
+        sortValue: record.valid_date
+    };
+}
+
+function aggregateVerificationRecords(records, mode) {
+    if (mode === "daily") {
+        return records.map(record => ({
+            key: `${record.valid_date}-${record.cycle_utc}`,
+            label: formatCompactDate(record.valid_date),
+            sortValue: `${record.valid_date}-${record.cycle_utc}`,
+            forecast: record.rain_forecast_daily_mm,
+            observed: record.imd_observed_mm,
+            count: 1,
+            observedCount: record.imd_observed_mm === null ? 0 : 1,
+            tooltip: `${formatCompactDate(record.valid_date)} | Forecast: ${formatMetric(record.rain_forecast_daily_mm, 2, " mm")} | IMD: ${formatMetric(record.imd_observed_mm, 2, " mm")}`
+        }));
+    }
+
+    const groups = new Map();
+
+    records.forEach(record => {
+        const period = periodForRecord(record, mode);
+        if (!groups.has(period.key)) {
+            groups.set(period.key, {
+                ...period,
+                forecast: 0,
+                observed: 0,
+                count: 0,
+                observedCount: 0
+            });
+        }
+
+        const group = groups.get(period.key);
+
+        if (record.rain_forecast_daily_mm !== null) {
+            group.forecast += record.rain_forecast_daily_mm;
+        }
+
+        if (record.imd_observed_mm !== null) {
+            group.observed += record.imd_observed_mm;
+            group.observedCount += 1;
+        }
+
+        group.count += 1;
+    });
+
+    return Array.from(groups.values())
+        .map(group => ({
+            ...group,
+            observed: group.observedCount ? group.observed : null,
+            tooltip: `${group.label} | Forecast total: ${formatMetric(group.forecast, 2, " mm")} | IMD total: ${formatMetric(group.observedCount ? group.observed : null, 2, " mm")}`
+        }))
+        .sort((a, b) => a.sortValue.localeCompare(b.sortValue));
+}
+
+function verificationMetrics(points) {
+    const matched = points.filter(point => (
+        point.forecast !== null &&
+        point.observed !== null &&
+        Number.isFinite(point.forecast) &&
+        Number.isFinite(point.observed)
+    ));
+
+    if (!matched.length) {
+        return {
+            matched: 0,
+            r2: null,
+            bias: null,
+            rmse: null
+        };
+    }
+
+    const errors = matched.map(point => point.forecast - point.observed);
+    const bias = errors.reduce((sum, value) => sum + value, 0) / matched.length;
+    const rmse = Math.sqrt(
+        errors.reduce((sum, value) => sum + value * value, 0) / matched.length
+    );
+    let r2 = null;
+
+    if (matched.length >= 2) {
+        const observedMean = matched.reduce((sum, point) => sum + point.observed, 0) / matched.length;
+        const ssTot = matched.reduce((sum, point) => {
+            const diff = point.observed - observedMean;
+            return sum + diff * diff;
+        }, 0);
+        const ssRes = matched.reduce((sum, point) => {
+            const diff = point.observed - point.forecast;
+            return sum + diff * diff;
+        }, 0);
+
+        if (ssTot > 0) {
+            r2 = 1 - (ssRes / ssTot);
+        }
+    }
+
+    return {
+        matched: matched.length,
+        r2,
+        bias,
+        rmse
+    };
+}
+
 function updateSummary(rows) {
     const alertRows = rows.filter(hasAlert);
     const topRow = rows.reduce((best, row) => (
@@ -853,6 +1165,7 @@ function applyFilters() {
     } else {
         const selectedRow = filteredData.find(row => rowKey(row) === selectedDistrictKey);
         renderDistribution(selectedRow);
+        renderVerification(selectedRow);
         markSelectedTableRow();
     }
 }
@@ -921,12 +1234,14 @@ function selectDistrict(row) {
     if (!row) {
         selectedDistrictKey = null;
         renderDistribution(null);
+        renderVerification(null);
         markSelectedTableRow();
         return;
     }
 
     selectedDistrictKey = rowKey(row);
     renderDistribution(row);
+    renderVerification(row);
     markSelectedTableRow();
 }
 
@@ -958,6 +1273,48 @@ function renderDistribution(row) {
     }
 
     elements.distributionChart.innerHTML = buildDistributionSvg(records);
+}
+
+function renderVerification(row) {
+    const hasArchive = verificationData.length > 0;
+    elements.downloadAllVerification.disabled = !hasArchive;
+
+    if (!row) {
+        elements.verificationSummary.textContent = "No district selected.";
+        elements.verificationNote.textContent = "";
+        elements.downloadDistrictVerification.disabled = true;
+        elements.verificationMatched.textContent = "0";
+        elements.verificationR2.textContent = "-";
+        elements.verificationBias.textContent = "-";
+        elements.verificationRmse.textContent = "-";
+        elements.verificationChart.innerHTML =
+            `<div class="chart-empty">Select a district to view daily forecast verification.</div>`;
+        return;
+    }
+
+    const records = verificationMap[rowKey(row)] || [];
+    const mode = elements.verificationPeriodBox.value || "daily";
+    const points = aggregateVerificationRecords(records, mode);
+    const metrics = verificationMetrics(points);
+
+    elements.verificationSummary.textContent =
+        `${row.district}, ${row.state} | Forecast compared with IMD observed rainfall when available`;
+    elements.verificationNote.textContent = records.length
+        ? `${records.length} archived days`
+        : "pending";
+    elements.downloadDistrictVerification.disabled = records.length === 0;
+    elements.verificationMatched.textContent = metrics.matched.toLocaleString("en-IN");
+    elements.verificationR2.textContent = metrics.r2 === null ? "-" : formatNumber(metrics.r2, 3);
+    elements.verificationBias.textContent = formatMetric(metrics.bias, 2, " mm");
+    elements.verificationRmse.textContent = formatMetric(metrics.rmse, 2, " mm");
+
+    if (!records.length) {
+        elements.verificationChart.innerHTML =
+            `<div class="chart-empty">Daily verification will appear after the next forecast run.</div>`;
+        return;
+    }
+
+    elements.verificationChart.innerHTML = buildVerificationSvg(points, mode);
 }
 
 function buildDistributionSvg(records) {
@@ -1029,43 +1386,143 @@ function buildDistributionSvg(records) {
     `;
 }
 
+function buildVerificationSvg(points, mode) {
+    const width = 760;
+    const height = 310;
+    const margin = { top: 28, right: 24, bottom: 66, left: 52 };
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const values = points.flatMap(point => [
+        point.forecast === null ? 0 : point.forecast,
+        point.observed === null ? 0 : point.observed
+    ]);
+    const maxRain = Math.max(1, ...values);
+    const tickCount = 4;
+    const step = plotWidth / Math.max(1, points.length);
+    const groupWidth = Math.min(34, Math.max(14, step * 0.72));
+    const barWidth = groupWidth / 2 - 2;
+    const labelEvery = Math.max(1, Math.ceil(points.length / 8));
+    const y = value => margin.top + plotHeight - (value / maxRain) * plotHeight;
+    const xCenter = index => margin.left + index * step + step / 2;
+
+    const yTicks = Array.from({ length: tickCount + 1 }, (_, index) => {
+        const value = (maxRain / tickCount) * index;
+        const yy = y(value);
+        return `
+            <line x1="${margin.left}" y1="${yy}" x2="${width - margin.right}" y2="${yy}" stroke="#edf0ed" />
+            <text x="${margin.left - 8}" y="${yy + 4}" text-anchor="end" font-size="10" fill="#5e6b66">${formatNumber(value, 1)}</text>
+        `;
+    }).join("");
+
+    const bars = points.map((point, index) => {
+        const center = xCenter(index);
+        const forecastValue = point.forecast === null ? 0 : point.forecast;
+        const observedValue = point.observed === null ? 0 : point.observed;
+        const forecastHeight = margin.top + plotHeight - y(forecastValue);
+        const observedHeight = margin.top + plotHeight - y(observedValue);
+        const observedBar = point.observed === null
+            ? ""
+            : `
+                <rect x="${center + 2}" y="${y(observedValue)}" width="${barWidth}" height="${observedHeight}" fill="rgba(201,58,58,0.72)">
+                    <title>${escapeHtml(point.tooltip)}</title>
+                </rect>
+            `;
+
+        return `
+            <rect x="${center - barWidth - 2}" y="${y(forecastValue)}" width="${barWidth}" height="${forecastHeight}" fill="rgba(31,122,77,0.72)">
+                <title>${escapeHtml(point.tooltip)}</title>
+            </rect>
+            ${observedBar}
+        `;
+    }).join("");
+
+    const labels = points.map((point, index) => {
+        if (index % labelEvery !== 0 && index !== points.length - 1) {
+            return "";
+        }
+
+        return `<text x="${xCenter(index)}" y="${height - 34}" text-anchor="middle" font-size="10" fill="#5e6b66">${escapeHtml(point.label)}</text>`;
+    }).join("");
+
+    const periodLabel = mode.charAt(0).toUpperCase() + mode.slice(1);
+
+    return `
+        <svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${periodLabel} forecast versus IMD observed rainfall chart">
+            <rect x="0" y="0" width="${width}" height="${height}" fill="#fbfcfa" />
+            ${yTicks}
+            ${bars}
+            <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${width - margin.right}" y2="${margin.top + plotHeight}" stroke="#9aa6a0" />
+            <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#9aa6a0" />
+            ${labels}
+            <rect x="${margin.left}" y="9" width="10" height="10" fill="rgba(31,122,77,0.72)" />
+            <text x="${margin.left + 16}" y="18" font-size="11" fill="#1f7a4d">Forecast</text>
+            <rect x="${margin.left + 84}" y="9" width="10" height="10" fill="rgba(201,58,58,0.72)" />
+            <text x="${margin.left + 100}" y="18" font-size="11" fill="#c93a3a">IMD observed</text>
+            <text x="${width - margin.right}" y="18" text-anchor="end" font-size="11" fill="#5e6b66">${periodLabel} comparison</text>
+            <text x="${width / 2}" y="${height - 10}" text-anchor="middle" font-size="10" fill="#5e6b66">Valid date / period</text>
+        </svg>
+    `;
+}
+
 function csvEscape(value) {
     const text = String(value ?? "");
     return /[",\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }
 
-function recordsToCsv(records) {
-    const headers = [
-        "state",
-        "district",
-        "from_hour",
-        "to_hour",
-        "interval_label",
-        "start_time_ist",
-        "end_time_ist",
-        "time_window_ist",
-        "rain_gfs_mm",
-        "bias_factor",
-        "rain_gfs_bc_mm",
-        "rain_icon_mm",
-        "alert_gfs_bc",
-        "alert_icon",
-        "date",
-        "cycle_utc"
-    ];
+const distributionCsvHeaders = [
+    "state",
+    "district",
+    "from_hour",
+    "to_hour",
+    "interval_label",
+    "start_time_ist",
+    "end_time_ist",
+    "time_window_ist",
+    "rain_gfs_mm",
+    "bias_factor",
+    "rain_gfs_bc_mm",
+    "rain_icon_mm",
+    "alert_gfs_bc",
+    "alert_icon",
+    "date",
+    "cycle_utc"
+];
 
+const verificationCsvHeaders = [
+    "state",
+    "district",
+    "forecast_issue_date",
+    "cycle_utc",
+    "forecast_issue_time_utc",
+    "valid_start_utc",
+    "valid_end_utc",
+    "valid_date",
+    "rain_forecast_daily_mm",
+    "rain_gfs_24h_mm",
+    "bias_factor",
+    "rain_gfs_bc_24h_mm",
+    "rain_icon_24h_mm",
+    "imd_observed_mm",
+    "observed_status",
+    "error_gfs_bc_mm",
+    "abs_error_gfs_bc_mm",
+    "pct_error_gfs_bc",
+    "updated_at_utc"
+];
+
+function recordsToCsv(records, headers) {
     return [
         headers.join(","),
         ...records.map(record => headers.map(header => csvEscape(record[header])).join(","))
     ].join("\n");
 }
 
-function downloadCsv(filename, records) {
+function downloadCsv(filename, records, headers) {
     if (!records.length) {
         return;
     }
 
-    const blob = new Blob([recordsToCsv(records)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([recordsToCsv(records, headers)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -1090,11 +1547,25 @@ function downloadSelectedDistribution() {
 
     const records = distributionMap[selectedDistrictKey] || [];
     const district = records[0]?.district || selectedDistrictKey.split("||")[1];
-    downloadCsv(`${safeFilename(district)}_3h_rainfall_distribution.csv`, records);
+    downloadCsv(`${safeFilename(district)}_3h_rainfall_distribution.csv`, records, distributionCsvHeaders);
 }
 
 function downloadAllDistribution() {
-    downloadCsv("india_3h_rainfall_distribution.csv", distributionData);
+    downloadCsv("india_3h_rainfall_distribution.csv", distributionData, distributionCsvHeaders);
+}
+
+function downloadSelectedVerification() {
+    if (!selectedDistrictKey) {
+        return;
+    }
+
+    const records = verificationMap[selectedDistrictKey] || [];
+    const district = records[0]?.district || selectedDistrictKey.split("||")[1];
+    downloadCsv(`${safeFilename(district)}_daily_forecast_imd_verification.csv`, records, verificationCsvHeaders);
+}
+
+function downloadAllVerification() {
+    downloadCsv("india_daily_forecast_imd_verification.csv", verificationData, verificationCsvHeaders);
 }
 
 function bindEvents() {
@@ -1111,14 +1582,21 @@ function bindEvents() {
     });
     elements.downloadDistrictDistribution.addEventListener("click", downloadSelectedDistribution);
     elements.downloadAllDistribution.addEventListener("click", downloadAllDistribution);
+    elements.verificationPeriodBox.addEventListener("change", () => {
+        const selectedRow = forecastData.find(item => rowKey(item) === selectedDistrictKey);
+        renderVerification(selectedRow || null);
+    });
+    elements.downloadDistrictVerification.addEventListener("click", downloadSelectedVerification);
+    elements.downloadAllVerification.addEventListener("click", downloadAllVerification);
 }
 
 async function init() {
     try {
-        const [basinRows, rainfallRows, distributionRows, districts] = await Promise.all([
+        const [basinRows, rainfallRows, distributionRows, verificationRows, districts] = await Promise.all([
             fetchCsv(BASIN_CSV),
             fetchCsv(DATA_CSV),
             fetchOptionalCsv(DISTRIBUTION_CSV),
+            fetchOptionalCsv(VERIFICATION_CSV),
             fetchJson(DISTRICTS_GEOJSON)
         ]);
 
@@ -1131,8 +1609,10 @@ async function init() {
         geojsonData = districts;
         forecastData = enrichForecastRows(rainfallRows);
         distributionData = enrichDistributionRows(distributionRows);
+        verificationData = enrichVerificationRows(verificationRows);
         rainfallMap = Object.fromEntries(forecastData.map(row => [row.district, row]));
         distributionMap = buildDistributionMap(distributionData);
+        verificationMap = buildVerificationMap(verificationData);
 
         populateBasinOptions();
         buildTableHead();
