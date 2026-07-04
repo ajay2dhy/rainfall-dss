@@ -55,6 +55,17 @@ h1 {
     line-height: 1.15;
 }
 
+.credit {
+    color: var(--muted);
+    font-size: 13px;
+    margin-top: 4px;
+}
+
+.credit strong {
+    color: var(--ink);
+    font-weight: 700;
+}
+
 .meta {
     color: var(--muted);
     font-size: 13px;
@@ -401,6 +412,7 @@ button:disabled {
     <div class="topbar">
         <div>
             <h1>India Rainfall Forecast DSS</h1>
+            <div class="credit">Developed by <strong>Ajay Ahirwar</strong> | National Institute of Hydrology (NIH)</div>
             <div class="status" id="status">Loading forecast data...</div>
         </div>
         <div class="meta" id="meta"></div>
