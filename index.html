@@ -74,7 +74,7 @@ h1 {
 
 .controls {
     display: grid;
-    grid-template-columns: minmax(220px, 1.4fr) minmax(160px, 0.8fr) minmax(180px, 1fr);
+    grid-template-columns: minmax(170px, 0.8fr) minmax(220px, 1.3fr) minmax(160px, 0.8fr) minmax(180px, 1fr);
     gap: 10px;
     margin-bottom: 14px;
 }
@@ -419,6 +419,11 @@ button:disabled {
     </div>
 
     <div class="controls">
+        <select id="layerBox">
+            <option value="district">Districts</option>
+            <option value="subbasin">Subbasins</option>
+            <option value="watershed">Watersheds</option>
+        </select>
         <input type="search" id="searchBox" placeholder="Search district, state, or basin">
         <select id="filterBox">
             <option value="ALL">All districts</option>
@@ -433,16 +438,16 @@ button:disabled {
     </div>
 
     <section class="stats" aria-label="Forecast summary">
-        <div class="stat"><span>Total districts</span><strong id="totalCount">0</strong></div>
-        <div class="stat"><span>Visible districts</span><strong id="visibleCount">0</strong></div>
-        <div class="stat"><span>Alert districts</span><strong id="alertCount">0</strong></div>
+        <div class="stat"><span id="totalLabel">Total districts</span><strong id="totalCount">0</strong></div>
+        <div class="stat"><span id="visibleLabel">Visible districts</span><strong id="visibleCount">0</strong></div>
+        <div class="stat"><span id="alertLabel">Alert districts</span><strong id="alertCount">0</strong></div>
         <div class="stat"><span>Maximum rainfall</span><strong id="maxRain">0 mm</strong></div>
-        <div class="stat"><span>Top district</span><strong id="topDistrict">-</strong></div>
+        <div class="stat"><span id="topLabel">Top district</span><strong id="topDistrict">-</strong></div>
     </section>
 
     <section class="workspace">
         <div class="map-wrap">
-            <h2 class="section-title">Rainfall Map <small id="mapNote"></small></h2>
+            <h2 class="section-title"><span id="mapTitle">Rainfall Map</span> <small id="mapNote"></small></h2>
             <div id="map"></div>
             <div class="legend">
                 <span><i class="swatch" style="background: var(--purple);"></i>&gt;150 mm</span>
@@ -490,7 +495,7 @@ button:disabled {
                 </div>
             </div>
 
-            <h2 class="section-title">District Forecasts <small id="tableNote"></small></h2>
+            <h2 class="section-title"><span id="tableTitle">District Forecasts</span> <small id="tableNote"></small></h2>
             <div class="table-scroll">
                 <table>
                     <thead id="tableHead"></thead>
@@ -507,14 +512,68 @@ const DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Rainfall.csv";
 const VERIFICATION_CSV = "India_Daily_GFS_IMD_Rainfall_Verification.csv";
 const BASIN_CSV = "district_basin_mapping.csv";
 const DISTRICTS_GEOJSON = "india_districts.geojson";
+const SUBBASIN_DATA_CSV = "India_24h_GFS_IMD_ICON_Subbasin_Rainfall.csv";
+const SUBBASIN_DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Subbasin_Rainfall.csv";
+const SUBBASINS_GEOJSON = "subbasins.geojson";
+const WATERSHED_DATA_CSV = "India_24h_GFS_IMD_ICON_Watershed_Rainfall.csv";
+const WATERSHED_DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Watershed_Rainfall.csv";
+const WATERSHEDS_GEOJSON = "watersheds.geojson";
 const DATA_CACHE_BUSTER = Date.now().toString();
 const FORECAST_TIME_ZONE = "Asia/Kolkata";
 const HOURS_TO_MS = 60 * 60 * 1000;
 
-const columns = [
+const layerConfigs = {
+    district: {
+        label: "Districts",
+        singular: "district",
+        totalLabel: "Total districts",
+        visibleLabel: "Visible districts",
+        alertLabel: "Alert districts",
+        topLabel: "Top district",
+        mapTitle: "District Rainfall Map",
+        tableTitle: "District Forecasts"
+    },
+    subbasin: {
+        label: "Subbasins",
+        singular: "subbasin",
+        totalLabel: "Total subbasins",
+        visibleLabel: "Visible subbasins",
+        alertLabel: "Alert subbasins",
+        topLabel: "Top subbasin",
+        mapTitle: "Subbasin Rainfall Map",
+        tableTitle: "Subbasin Forecasts"
+    },
+    watershed: {
+        label: "Watersheds",
+        singular: "watershed",
+        totalLabel: "Total watersheds",
+        visibleLabel: "Visible watersheds",
+        alertLabel: "Alert watersheds",
+        topLabel: "Top watershed",
+        mapTitle: "Watershed Rainfall Map",
+        tableTitle: "Watershed Forecasts"
+    }
+};
+
+const districtColumns = [
     { key: "state", label: "State" },
     { key: "district", label: "District" },
     { key: "basin", label: "Basin" },
+    { key: "rain_gfs_mm", label: "GFS mm", numeric: true },
+    { key: "imd_mean_mm", label: "IMD mean mm", numeric: true },
+    { key: "bias_factor", label: "Bias factor", numeric: true },
+    { key: "rain_gfs_bc_mm", label: "Bias-corrected mm", numeric: true },
+    { key: "rain_icon_mm", label: "ICON mm", numeric: true },
+    { key: "alert_gfs_bc", label: "GFS alert", alert: true },
+    { key: "alert_icon", label: "ICON alert", alert: true }
+];
+
+const hydroColumns = [
+    { key: "unit_id", label: "ID" },
+    { key: "unit_name", label: "Name" },
+    { key: "basin", label: "Basin" },
+    { key: "sub_basin", label: "Subbasin" },
+    { key: "area_sqkm", label: "Area sq km", numeric: true },
     { key: "rain_gfs_mm", label: "GFS mm", numeric: true },
     { key: "imd_mean_mm", label: "IMD mean mm", numeric: true },
     { key: "bias_factor", label: "Bias factor", numeric: true },
@@ -532,6 +591,8 @@ const alertRank = {
     "EXTREMELY HEAVY": 4
 };
 
+let datasets = {};
+let activeLayer = "district";
 let geojsonData = null;
 let forecastData = [];
 let filteredData = [];
@@ -547,14 +608,20 @@ let selectedDistrictKey = null;
 const elements = {
     status: document.getElementById("status"),
     meta: document.getElementById("meta"),
+    layerBox: document.getElementById("layerBox"),
     searchBox: document.getElementById("searchBox"),
     filterBox: document.getElementById("filterBox"),
     basinBox: document.getElementById("basinBox"),
     totalCount: document.getElementById("totalCount"),
+    totalLabel: document.getElementById("totalLabel"),
     visibleCount: document.getElementById("visibleCount"),
+    visibleLabel: document.getElementById("visibleLabel"),
     alertCount: document.getElementById("alertCount"),
+    alertLabel: document.getElementById("alertLabel"),
     maxRain: document.getElementById("maxRain"),
+    topLabel: document.getElementById("topLabel"),
     topDistrict: document.getElementById("topDistrict"),
+    mapTitle: document.getElementById("mapTitle"),
     mapNote: document.getElementById("mapNote"),
     distributionNote: document.getElementById("distributionNote"),
     selectedDistrictSummary: document.getElementById("selectedDistrictSummary"),
@@ -572,6 +639,7 @@ const elements = {
     downloadDistrictVerification: document.getElementById("downloadDistrictVerification"),
     downloadAllVerification: document.getElementById("downloadAllVerification"),
     tableNote: document.getElementById("tableNote"),
+    tableTitle: document.getElementById("tableTitle"),
     tableHead: document.getElementById("tableHead"),
     tableBody: document.getElementById("tableBody")
 };
@@ -622,6 +690,14 @@ async function fetchJson(url) {
         throw new Error(`${url} returned ${response.status}`);
     }
     return response.json();
+}
+
+async function fetchOptionalJson(url) {
+    try {
+        return await fetchJson(url);
+    } catch {
+        return null;
+    }
 }
 
 function toNumber(value) {
@@ -785,7 +861,29 @@ function alertClass(alert) {
 }
 
 function rowKey(row) {
-    return `${row.state || ""}||${row.district || ""}`;
+    if (row.unit_type && row.unit_id) {
+        return `${row.unit_type}||${row.unit_id}`;
+    }
+
+    return `district||${row.state || ""}||${row.district || ""}`;
+}
+
+function displayName(row) {
+    return row.unit_name || row.district || row.unit_id || "-";
+}
+
+function displayContext(row) {
+    const parts = [];
+
+    if (row.state) parts.push(row.state);
+    if (row.basin) parts.push(row.basin);
+    if (row.sub_basin && row.sub_basin !== row.basin) parts.push(row.sub_basin);
+
+    return parts.join(" | ");
+}
+
+function currentColumns() {
+    return activeLayer === "district" ? districtColumns : hydroColumns;
 }
 
 function getColor(rain) {
@@ -807,17 +905,17 @@ function escapeHtml(value) {
 }
 
 function buildTableHead() {
-    elements.tableHead.innerHTML = `<tr>${columns.map(col => `<th>${col.label}</th>`).join("")}</tr>`;
+    elements.tableHead.innerHTML = `<tr>${currentColumns().map(col => `<th>${col.label}</th>`).join("")}</tr>`;
 }
 
 function buildTableRows(rows) {
     if (!rows.length) {
-        elements.tableBody.innerHTML = `<tr><td colspan="${columns.length}">No districts match the selected filters.</td></tr>`;
+        elements.tableBody.innerHTML = `<tr><td colspan="${currentColumns().length}">No ${layerConfigs[activeLayer].label.toLowerCase()} match the selected filters.</td></tr>`;
         return;
     }
 
     elements.tableBody.innerHTML = rows.map(row => {
-        const cells = columns.map(col => {
+        const cells = currentColumns().map(col => {
             let value = row[col.key];
             let className = col.numeric ? "num" : "";
 
@@ -846,7 +944,7 @@ function markSelectedTableRow() {
 }
 
 function populateBasinOptions() {
-    const basins = Array.from(new Set(Object.values(districtBasinMap)))
+    const basins = Array.from(new Set(forecastData.map(row => row.basin)))
         .filter(Boolean)
         .sort((a, b) => a.localeCompare(b));
 
@@ -854,14 +952,29 @@ function populateBasinOptions() {
         basins.map(basin => `<option value="${escapeHtml(basin)}">${escapeHtml(basin)}</option>`).join("");
 }
 
-function enrichForecastRows(rows) {
+function enrichForecastRows(rows, layer = "district") {
     return rows
-        .filter(row => row.district && row.state)
+        .filter(row => (layer === "district" ? row.district && row.state : row.unit_id))
         .map(row => {
-            const basin = districtBasinMap[row.district] || "";
+            const basin = layer === "district"
+                ? districtBasinMap[row.district] || ""
+                : row.basin || "";
+            const unitType = layer === "district" ? "district" : row.unit_type || layer;
+            const unitId = layer === "district"
+                ? `${row.state || ""}||${row.district || ""}`
+                : row.unit_id || "";
+            const unitName = layer === "district"
+                ? row.district
+                : row.unit_name || row.unit_id || "";
+
             return {
                 ...row,
+                unit_type: unitType,
+                unit_id: unitId,
+                unit_name: unitName,
                 basin,
+                sub_basin: row.sub_basin || "",
+                area_sqkm: row.area_sqkm === "" ? "" : toNumber(row.area_sqkm),
                 alert_gfs_bc: normalizeAlert(row.alert_gfs_bc),
                 alert_icon: normalizeAlert(row.alert_icon),
                 rain_gfs_mm: toNumber(row.rain_gfs_mm),
@@ -873,12 +986,25 @@ function enrichForecastRows(rows) {
         });
 }
 
-function enrichDistributionRows(rows) {
+function enrichDistributionRows(rows, layer = "district") {
     return rows
-        .filter(row => row.district && row.state)
+        .filter(row => (layer === "district" ? row.district && row.state : row.unit_id))
         .map(row => {
+            const unitType = layer === "district" ? "district" : row.unit_type || layer;
+            const unitId = layer === "district"
+                ? `${row.state || ""}||${row.district || ""}`
+                : row.unit_id || "";
+            const unitName = layer === "district"
+                ? row.district
+                : row.unit_name || row.unit_id || "";
             const enriched = {
                 ...row,
+                unit_type: unitType,
+                unit_id: unitId,
+                unit_name: unitName,
+                basin: row.basin || "",
+                sub_basin: row.sub_basin || "",
+                area_sqkm: row.area_sqkm === "" ? "" : toNumber(row.area_sqkm),
                 from_hour: toNumber(row.from_hour),
                 to_hour: toNumber(row.to_hour),
                 interval_label: row.interval_label || `${row.from_hour}-${row.to_hour} h`,
@@ -918,6 +1044,9 @@ function enrichVerificationRows(rows) {
         .filter(row => row.district && row.state)
         .map(row => ({
             ...row,
+            unit_type: "district",
+            unit_id: `${row.state || ""}||${row.district || ""}`,
+            unit_name: row.district || "",
             forecast_issue_date: String(row.forecast_issue_date || ""),
             cycle_utc: String(row.cycle_utc || "").padStart(2, "0"),
             valid_date: String(row.valid_date || ""),
@@ -1112,16 +1241,23 @@ function verificationMetrics(points) {
 }
 
 function updateSummary(rows) {
+    const config = layerConfigs[activeLayer];
     const alertRows = rows.filter(hasAlert);
     const topRow = rows.reduce((best, row) => (
         !best || row.rain_gfs_bc_mm > best.rain_gfs_bc_mm ? row : best
     ), null);
 
+    elements.totalLabel.textContent = config.totalLabel;
+    elements.visibleLabel.textContent = config.visibleLabel;
+    elements.alertLabel.textContent = config.alertLabel;
+    elements.topLabel.textContent = config.topLabel;
+    elements.mapTitle.textContent = config.mapTitle;
+    elements.tableTitle.textContent = config.tableTitle;
     elements.totalCount.textContent = forecastData.length.toLocaleString("en-IN");
     elements.visibleCount.textContent = rows.length.toLocaleString("en-IN");
     elements.alertCount.textContent = alertRows.length.toLocaleString("en-IN");
     elements.maxRain.textContent = topRow ? `${formatNumber(topRow.rain_gfs_bc_mm)} mm` : "0 mm";
-    elements.topDistrict.textContent = topRow ? topRow.district : "-";
+    elements.topDistrict.textContent = topRow ? displayName(topRow) : "-";
 
     const firstRow = forecastData[0];
     elements.meta.textContent = firstRow
@@ -1143,7 +1279,7 @@ function matchesSearch(row, search) {
         return true;
     }
 
-    return [row.district, row.state, row.basin]
+    return [row.district, row.state, row.unit_id, row.unit_name, row.basin, row.sub_basin]
         .some(value => String(value || "").toLowerCase().includes(search));
 }
 
@@ -1191,14 +1327,14 @@ function drawMap() {
         map.removeLayer(geoLayer);
     }
 
-    const activeDistricts = new Set(filteredData.map(row => row.district));
+    const activeKeys = new Set(filteredData.map(rowKey));
     const hasFilters = filteredData.length !== forecastData.length;
 
     geoLayer = L.geoJSON(geojsonData, {
         style: feature => {
-            const name = feature.properties.NAME_2;
-            const row = rainfallMap[name];
-            const active = !hasFilters || activeDistricts.has(name);
+            const key = featureRowKey(feature);
+            const row = rainfallMap[key];
+            const active = !hasFilters || activeKeys.has(key);
 
             if (!row) {
                 return {
@@ -1221,8 +1357,9 @@ function drawMap() {
             };
         },
         onEachFeature: (feature, layer) => {
-            const name = feature.properties.NAME_2;
-            const row = rainfallMap[name];
+            const name = featureName(feature);
+            const key = featureRowKey(feature);
+            const row = rainfallMap[key];
 
             if (!row) {
                 layer.bindPopup(`<b>${escapeHtml(name)}</b><br>No forecast row found`);
@@ -1231,7 +1368,7 @@ function drawMap() {
 
             layer.bindPopup(
                 `<b>${escapeHtml(name)}</b><br>` +
-                `${escapeHtml(row.state)}<br>` +
+                `${escapeHtml(displayContext(row) || layerConfigs[activeLayer].label)}<br>` +
                 `Basin: ${escapeHtml(row.basin || "-")}<br>` +
                 `Bias-corrected rainfall: ${formatNumber(row.rain_gfs_bc_mm)} mm<br>` +
                 `GFS alert: ${escapeHtml(row.alert_gfs_bc)}<br>` +
@@ -1240,6 +1377,26 @@ function drawMap() {
             layer.on("click", () => selectDistrict(row));
         }
     }).addTo(map);
+}
+
+function featureRowKey(feature) {
+    const props = feature.properties || {};
+
+    if (activeLayer === "district") {
+        return `district||${props.NAME_1 || ""}||${props.NAME_2 || ""}`;
+    }
+
+    return `${props.unit_type || activeLayer}||${props.unit_id || ""}`;
+}
+
+function featureName(feature) {
+    const props = feature.properties || {};
+
+    if (activeLayer === "district") {
+        return props.NAME_2 || "District";
+    }
+
+    return props.unit_name || props.unit_id || layerConfigs[activeLayer].singular;
 }
 
 function selectDistrict(row) {
@@ -1259,19 +1416,19 @@ function selectDistrict(row) {
 
 function renderDistribution(row) {
     if (!row) {
-        elements.selectedDistrictSummary.textContent = "No district selected.";
+        elements.selectedDistrictSummary.textContent = `No ${layerConfigs[activeLayer].singular} selected.`;
         elements.distributionNote.textContent = "";
         elements.downloadDistrictDistribution.disabled = true;
         elements.downloadAllDistribution.disabled = distributionData.length === 0;
         elements.distributionChart.innerHTML =
-            `<div class="chart-empty">Select a district to view the 3-hour distribution.</div>`;
+            `<div class="chart-empty">Select a ${layerConfigs[activeLayer].singular} to view the 3-hour distribution.</div>`;
         return;
     }
 
     const records = distributionMap[rowKey(row)] || [];
     const cycleText = records[0]?.cycle_time_ist ? ` | Cycle: ${records[0].cycle_time_ist}` : "";
     elements.selectedDistrictSummary.textContent =
-        `${row.district}, ${row.state} | 24h bias-corrected total: ${formatNumber(row.rain_gfs_bc_mm)} mm${cycleText}`;
+        `${displayName(row)}${displayContext(row) ? `, ${displayContext(row)}` : ""} | 24h bias-corrected total: ${formatNumber(row.rain_gfs_bc_mm)} mm${cycleText}`;
     elements.distributionNote.textContent = records.length
         ? `${records.length} intervals | IST valid time`
         : "pending";
@@ -1289,7 +1446,21 @@ function renderDistribution(row) {
 
 function renderVerification(row) {
     const hasArchive = verificationData.length > 0;
-    elements.downloadAllVerification.disabled = !hasArchive;
+    elements.downloadAllVerification.disabled = !hasArchive || activeLayer !== "district";
+
+    if (activeLayer !== "district") {
+        elements.verificationSummary.textContent =
+            "Daily IMD verification is currently available for the district layer.";
+        elements.verificationNote.textContent = "district only";
+        elements.downloadDistrictVerification.disabled = true;
+        elements.verificationMatched.textContent = "0";
+        elements.verificationR2.textContent = "-";
+        elements.verificationBias.textContent = "-";
+        elements.verificationRmse.textContent = "-";
+        elements.verificationChart.innerHTML =
+            `<div class="chart-empty">Switch to Districts to view IMD observed rainfall verification.</div>`;
+        return;
+    }
 
     if (!row) {
         elements.verificationSummary.textContent = "No district selected.";
@@ -1482,8 +1653,14 @@ function csvEscape(value) {
 }
 
 const distributionCsvHeaders = [
+    "unit_type",
+    "unit_id",
+    "unit_name",
     "state",
     "district",
+    "basin",
+    "sub_basin",
+    "area_sqkm",
     "from_hour",
     "to_hour",
     "interval_label",
@@ -1558,12 +1735,12 @@ function downloadSelectedDistribution() {
     }
 
     const records = distributionMap[selectedDistrictKey] || [];
-    const district = records[0]?.district || selectedDistrictKey.split("||")[1];
-    downloadCsv(`${safeFilename(district)}_3h_rainfall_distribution.csv`, records, distributionCsvHeaders);
+    const name = records[0] ? displayName(records[0]) : selectedDistrictKey.split("||").pop();
+    downloadCsv(`${safeFilename(name)}_3h_rainfall_distribution.csv`, records, distributionCsvHeaders);
 }
 
 function downloadAllDistribution() {
-    downloadCsv("india_3h_rainfall_distribution.csv", distributionData, distributionCsvHeaders);
+    downloadCsv(`india_${activeLayer}_3h_rainfall_distribution.csv`, distributionData, distributionCsvHeaders);
 }
 
 function downloadSelectedVerification() {
@@ -1580,7 +1757,34 @@ function downloadAllVerification() {
     downloadCsv("india_daily_forecast_imd_verification.csv", verificationData, verificationCsvHeaders);
 }
 
+function setActiveLayer(layer) {
+    if (!datasets[layer]) {
+        return;
+    }
+
+    activeLayer = layer;
+    const dataset = datasets[layer];
+    geojsonData = dataset.geojson;
+    forecastData = dataset.forecast;
+    distributionData = dataset.distribution;
+    rainfallMap = Object.fromEntries(forecastData.map(row => [rowKey(row), row]));
+    distributionMap = buildDistributionMap(distributionData);
+    selectedDistrictKey = null;
+
+    elements.layerBox.value = layer;
+    elements.searchBox.placeholder = `Search ${layerConfigs[layer].singular}, ID, or basin`;
+    elements.filterBox.options[0].textContent = `All ${layerConfigs[layer].label.toLowerCase()}`;
+    buildTableHead();
+    populateBasinOptions();
+    applyFilters();
+
+    if (geoLayer && geoLayer.getBounds && geoLayer.getBounds().isValid()) {
+        map.fitBounds(geoLayer.getBounds(), { padding: [10, 10] });
+    }
+}
+
 function bindEvents() {
+    elements.layerBox.addEventListener("change", () => setActiveLayer(elements.layerBox.value));
     elements.searchBox.addEventListener("input", applyFilters);
     elements.filterBox.addEventListener("change", applyFilters);
     elements.basinBox.addEventListener("change", applyFilters);
@@ -1604,12 +1808,30 @@ function bindEvents() {
 
 async function init() {
     try {
-        const [basinRows, rainfallRows, distributionRows, verificationRows, districts] = await Promise.all([
+        const [
+            basinRows,
+            rainfallRows,
+            distributionRows,
+            verificationRows,
+            districts,
+            subbasinRows,
+            subbasinDistributionRows,
+            subbasins,
+            watershedRows,
+            watershedDistributionRows,
+            watersheds
+        ] = await Promise.all([
             fetchCsv(BASIN_CSV),
             fetchCsv(DATA_CSV),
             fetchOptionalCsv(DISTRIBUTION_CSV),
             fetchOptionalCsv(VERIFICATION_CSV),
-            fetchJson(DISTRICTS_GEOJSON)
+            fetchJson(DISTRICTS_GEOJSON),
+            fetchOptionalCsv(SUBBASIN_DATA_CSV),
+            fetchOptionalCsv(SUBBASIN_DISTRIBUTION_CSV),
+            fetchOptionalJson(SUBBASINS_GEOJSON),
+            fetchOptionalCsv(WATERSHED_DATA_CSV),
+            fetchOptionalCsv(WATERSHED_DISTRIBUTION_CSV),
+            fetchOptionalJson(WATERSHEDS_GEOJSON)
         ]);
 
         districtBasinMap = Object.fromEntries(
@@ -1618,18 +1840,39 @@ async function init() {
                 .map(row => [row.district, row.basin])
         );
 
-        geojsonData = districts;
-        forecastData = enrichForecastRows(rainfallRows);
-        distributionData = enrichDistributionRows(distributionRows);
+        datasets = {
+            district: {
+                geojson: districts,
+                forecast: enrichForecastRows(rainfallRows, "district"),
+                distribution: enrichDistributionRows(distributionRows, "district")
+            }
+        };
+
+        if (subbasins && subbasinRows.length) {
+            datasets.subbasin = {
+                geojson: subbasins,
+                forecast: enrichForecastRows(subbasinRows, "subbasin"),
+                distribution: enrichDistributionRows(subbasinDistributionRows, "subbasin")
+            };
+        }
+
+        if (watersheds && watershedRows.length) {
+            datasets.watershed = {
+                geojson: watersheds,
+                forecast: enrichForecastRows(watershedRows, "watershed"),
+                distribution: enrichDistributionRows(watershedDistributionRows, "watershed")
+            };
+        }
+
         verificationData = enrichVerificationRows(verificationRows);
-        rainfallMap = Object.fromEntries(forecastData.map(row => [row.district, row]));
-        distributionMap = buildDistributionMap(distributionData);
         verificationMap = buildVerificationMap(verificationData);
 
-        populateBasinOptions();
-        buildTableHead();
+        Array.from(elements.layerBox.options).forEach(option => {
+            option.disabled = !datasets[option.value];
+        });
+
         bindEvents();
-        applyFilters();
+        setActiveLayer("district");
 
         elements.status.textContent = "Data loaded successfully.";
     } catch (error) {

@@ -21,6 +21,7 @@ import xarray as xr
 import pandas as pd
 import geopandas as gpd
 import rioxarray
+import numpy as np
 from datetime import datetime, timedelta
 
 # ------------------------------------------------------------------
@@ -30,6 +31,10 @@ from datetime import datetime, timedelta
 DISTRICT_SHP = r"data/India_Districts.shp"
 DIST_COL = "NAME_2"
 STATE_COL = "NAME_1"
+
+HYDRO_DATA_DIR = os.path.abspath(os.path.join("..", "data"))
+SUBBASIN_SHP = os.path.join(HYDRO_DATA_DIR, "Subbasin.shp")
+WATERSHED_SHP = os.path.join(HYDRO_DATA_DIR, "Watershed.shp")
 
 IMD_DIR = "IMD_Rainfall"
 GFS_DIR = "GFS_TMP"
@@ -216,11 +221,331 @@ def iso_utc(dt):
 def safe_numeric(series):
     return pd.to_numeric(series, errors="coerce")
 
+
+UNIT_COLUMNS = [
+    "unit_type",
+    "unit_id",
+    "unit_name",
+    "basin",
+    "sub_basin",
+    "area_sqkm"
+]
+
+
+def clean_text(series, fallback=""):
+    return series.fillna(fallback).astype(str).replace("nan", fallback)
+
+
+def normalize_area(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def load_hydrologic_units():
+    units = {}
+
+    if os.path.exists(SUBBASIN_SHP):
+        subbasins = gpd.read_file(SUBBASIN_SHP)
+        subbasins = subbasins[
+            subbasins.geometry.notna() & ~subbasins.geometry.is_empty
+        ].copy()
+        subbasins["unit_type"] = "subbasin"
+        subbasins["unit_id"] = clean_text(subbasins["sbcode"])
+        subbasins["unit_name"] = clean_text(subbasins["sub_basin"])
+        subbasins["basin"] = clean_text(subbasins["ba_name"])
+        subbasins["sub_basin"] = clean_text(subbasins["sub_basin"])
+        subbasins["area_sqkm"] = (
+            pd.to_numeric(subbasins["shape_Area"], errors="coerce") /
+            1_000_000.0
+        )
+        subbasins = subbasins.to_crs("EPSG:4326")
+        subbasins["_unit_index"] = np.arange(len(subbasins))
+        units["subbasin"] = subbasins
+        write_hydrologic_geojson(
+            subbasins,
+            "subbasins.geojson",
+            simplify_tolerance=0.01
+        )
+    else:
+        print(f"Subbasin shapefile not found -> {SUBBASIN_SHP}")
+
+    if os.path.exists(WATERSHED_SHP):
+        watersheds = gpd.read_file(WATERSHED_SHP)
+        watersheds = watersheds[
+            watersheds.geometry.notna() & ~watersheds.geometry.is_empty
+        ].copy()
+
+        if "subbasin" in units:
+            sub_lookup = units["subbasin"][
+                ["unit_id", "basin", "sub_basin"]
+            ].rename(columns={"unit_id": "sbcode"})
+            sub_lookup = sub_lookup.drop_duplicates("sbcode")
+            watersheds = watersheds.merge(sub_lookup, on="sbcode", how="left")
+        else:
+            watersheds["basin"] = ""
+            watersheds["sub_basin"] = clean_text(watersheds["sbcode"])
+
+        watershed_code = clean_text(watersheds["wsconc"])
+        object_id = clean_text(watersheds["objectid"])
+        missing_code = watershed_code.str.lower().isin(["", "none", "nan"])
+
+        watersheds["unit_type"] = "watershed"
+        watersheds["unit_id"] = watershed_code.where(
+            ~missing_code,
+            "WS_" + object_id
+        )
+        watersheds["unit_name"] = "Watershed " + watershed_code.where(
+            ~missing_code,
+            object_id
+        )
+        watersheds["basin"] = clean_text(watersheds["basin"])
+        watersheds["sub_basin"] = clean_text(watersheds["sub_basin"])
+        watersheds["area_sqkm"] = pd.to_numeric(
+            watersheds["area_sqkm"],
+            errors="coerce"
+        )
+        watersheds = watersheds.to_crs("EPSG:4326")
+        watersheds = watersheds.dissolve(
+            by="unit_id",
+            as_index=False,
+            aggfunc={
+                "unit_type": "first",
+                "unit_name": "first",
+                "basin": "first",
+                "sub_basin": "first",
+                "area_sqkm": "sum"
+            }
+        )
+        watersheds["_unit_index"] = np.arange(len(watersheds))
+        units["watershed"] = watersheds
+        write_hydrologic_geojson(
+            watersheds,
+            "watersheds.geojson",
+            simplify_tolerance=0.03
+        )
+    else:
+        print(f"Watershed shapefile not found -> {WATERSHED_SHP}")
+
+    return units
+
+
+def write_hydrologic_geojson(gdf, filename, simplify_tolerance):
+    out_path = os.path.join(OUTPUT_DIR, filename)
+    web_gdf = gdf[UNIT_COLUMNS + ["geometry"]].copy()
+    web_gdf["area_sqkm"] = pd.to_numeric(
+        web_gdf["area_sqkm"],
+        errors="coerce"
+    ).fillna(0.0)
+    web_gdf["geometry"] = web_gdf.geometry.simplify(
+        simplify_tolerance,
+        preserve_topology=True
+    )
+    web_gdf.to_file(out_path, driver="GeoJSON")
+
+
+def lat_lon_names(da):
+    lon_name = next(
+        name for name in ["longitude", "lon", "x"]
+        if name in da.coords
+    )
+    lat_name = next(
+        name for name in ["latitude", "lat", "y"]
+        if name in da.coords
+    )
+    return lat_name, lon_name
+
+
+def zonal_mean_points(da, units_gdf, value_col):
+    lat_name, lon_name = lat_lon_names(da)
+    minx, miny, maxx, maxy = units_gdf.total_bounds
+    pad = 0.5
+
+    lons = np.asarray(da[lon_name].values)
+    lats = np.asarray(da[lat_name].values)
+    lon_idx = np.where((lons >= minx - pad) & (lons <= maxx + pad))[0]
+    lat_idx = np.where((lats >= miny - pad) & (lats <= maxy + pad))[0]
+
+    if len(lon_idx) == 0 or len(lat_idx) == 0:
+        result = units_gdf[UNIT_COLUMNS + ["_unit_index"]].copy()
+        result[value_col] = 0.0
+        return result
+
+    da_sub = da.isel({lon_name: lon_idx, lat_name: lat_idx})
+    da_sub = da_sub.transpose(lat_name, lon_name)
+    vals = np.asarray(da_sub.values, dtype=float)
+    lon_grid, lat_grid = np.meshgrid(
+        np.asarray(da_sub[lon_name].values),
+        np.asarray(da_sub[lat_name].values)
+    )
+
+    points = gpd.GeoDataFrame(
+        {"value": vals.ravel()},
+        geometry=gpd.points_from_xy(lon_grid.ravel(), lat_grid.ravel()),
+        crs="EPSG:4326"
+    )
+    points = points[np.isfinite(points["value"])].copy()
+
+    joined = gpd.sjoin(
+        points,
+        units_gdf[["_unit_index", "geometry"]],
+        how="inner",
+        predicate="intersects"
+    )
+    grouped = joined.groupby("_unit_index")["value"].mean()
+
+    result = units_gdf[UNIT_COLUMNS + ["_unit_index"]].copy()
+    result[value_col] = result["_unit_index"].map(grouped).fillna(0.0)
+    return result
+
+
+def append_unit_records(records, means_df, from_hour, to_hour, value_col):
+    for row in means_df.to_dict("records"):
+        records.append({
+            **{col: row.get(col, "") for col in UNIT_COLUMNS},
+            "from_hour": from_hour,
+            "to_hour": to_hour,
+            value_col: row.get(value_col, 0.0)
+        })
+
+
+def hydro_bias_factor(row):
+    if row["rain_gfs_mm"] < 0.1:
+        return 1.0
+
+    bf = row["imd_mean_mm"] / row["rain_gfs_mm"]
+    return min(max(bf, 0.3), 3.0)
+
+
+def build_hydrologic_outputs(gfs_records, icon_records, imd_means):
+    empty_icon_cols = UNIT_COLUMNS + [
+        "from_hour",
+        "to_hour",
+        "rain_icon_mm"
+    ]
+    gfs_df_h = pd.DataFrame(gfs_records)
+    icon_df_h = pd.DataFrame(icon_records)
+
+    if icon_df_h.empty:
+        icon_df_h = pd.DataFrame(columns=empty_icon_cols)
+
+    gfs_24h_h = (
+        gfs_df_h[gfs_df_h["to_hour"] <= 24]
+        .groupby(UNIT_COLUMNS)["rain_gfs_mm"]
+        .sum()
+        .reset_index()
+    )
+    bc_h = gfs_24h_h.merge(
+        imd_means[["unit_type", "unit_id", "imd_mean_mm"]],
+        on=["unit_type", "unit_id"],
+        how="left"
+    )
+    bc_h["imd_mean_mm"] = pd.to_numeric(
+        bc_h["imd_mean_mm"],
+        errors="coerce"
+    ).fillna(0.0)
+    bc_h["bias_factor"] = bc_h.apply(hydro_bias_factor, axis=1)
+    bc_h["rain_gfs_bc_mm"] = bc_h["rain_gfs_mm"] * bc_h["bias_factor"]
+
+    gfs_distribution_h = gfs_df_h.merge(
+        bc_h[["unit_type", "unit_id", "bias_factor"]],
+        on=["unit_type", "unit_id"],
+        how="left"
+    )
+    gfs_distribution_h["bias_factor"] = (
+        gfs_distribution_h["bias_factor"]
+        .fillna(1.0)
+        .astype(float)
+    )
+    gfs_distribution_h["rain_gfs_bc_mm"] = (
+        gfs_distribution_h["rain_gfs_mm"] *
+        gfs_distribution_h["bias_factor"]
+    )
+
+    if not icon_df_h.empty:
+        icon_24h_h = (
+            icon_df_h[icon_df_h["to_hour"] <= 24]
+            .groupby(["unit_type", "unit_id"])["rain_icon_mm"]
+            .sum()
+            .reset_index()
+        )
+    else:
+        icon_24h_h = pd.DataFrame(
+            columns=["unit_type", "unit_id", "rain_icon_mm"]
+        )
+
+    final_h = bc_h.merge(
+        icon_24h_h,
+        on=["unit_type", "unit_id"],
+        how="left"
+    )
+    final_h["rain_icon_mm"] = pd.to_numeric(
+        final_h["rain_icon_mm"],
+        errors="coerce"
+    ).fillna(0.0)
+    final_h["alert_gfs_bc"] = final_h["rain_gfs_bc_mm"].apply(imd_alert)
+    final_h["alert_icon"] = final_h["rain_icon_mm"].apply(imd_alert)
+    final_h["date"] = DATE
+    final_h["cycle_utc"] = CYCLE
+
+    distribution_h = gfs_distribution_h.merge(
+        icon_df_h,
+        on=UNIT_COLUMNS + ["from_hour", "to_hour"],
+        how="left"
+    )
+    distribution_h["rain_icon_mm"] = pd.to_numeric(
+        distribution_h["rain_icon_mm"],
+        errors="coerce"
+    ).fillna(0.0)
+    distribution_h["alert_gfs_bc"] = (
+        distribution_h["rain_gfs_bc_mm"].apply(imd_alert)
+    )
+    distribution_h["alert_icon"] = (
+        distribution_h["rain_icon_mm"].apply(imd_alert)
+    )
+    distribution_h["interval_label"] = (
+        distribution_h["from_hour"].astype(int).astype(str) +
+        "-" +
+        distribution_h["to_hour"].astype(int).astype(str) +
+        " h"
+    )
+    distribution_h["date"] = DATE
+    distribution_h["cycle_utc"] = CYCLE
+
+    final_cols = UNIT_COLUMNS + [
+        "rain_gfs_mm",
+        "imd_mean_mm",
+        "bias_factor",
+        "rain_gfs_bc_mm",
+        "rain_icon_mm",
+        "alert_gfs_bc",
+        "alert_icon",
+        "date",
+        "cycle_utc"
+    ]
+    distribution_cols = UNIT_COLUMNS + [
+        "from_hour",
+        "to_hour",
+        "interval_label",
+        "rain_gfs_mm",
+        "bias_factor",
+        "rain_gfs_bc_mm",
+        "rain_icon_mm",
+        "alert_gfs_bc",
+        "alert_icon",
+        "date",
+        "cycle_utc"
+    ]
+
+    return final_h[final_cols], distribution_h[distribution_cols]
+
 # ------------------------------------------------------------------
 # LOAD DISTRICTS
 # ------------------------------------------------------------------
 
 districts = gpd.read_file(DISTRICT_SHP).to_crs("EPSG:4326")
+hydrologic_units = load_hydrologic_units()
 
 # ------------------------------------------------------------------
 # STEP 1: IMD OBSERVED RAINFALL (LAST COMPLETE YEAR)
@@ -276,6 +601,19 @@ for _, row in districts.iterrows():
 
 imd_df = pd.DataFrame(imd_means)
 
+hydrologic_imd_means = {}
+
+if hydrologic_units:
+    imd_mean_grid = ds_imd["rain"].mean(dim="time", skipna=True)
+
+    for unit_key, unit_gdf in hydrologic_units.items():
+        print(f"Computing IMD mean for {unit_key} units...")
+        hydrologic_imd_means[unit_key] = zonal_mean_points(
+            imd_mean_grid,
+            unit_gdf,
+            "imd_mean_mm"
+        )
+
 imd_year_cache = {last_complete_year: ds_imd}
 
 
@@ -297,6 +635,7 @@ def get_imd_year_dataset(year):
             )
         except Exception as exc:
             print(f"IMD observed rainfall unavailable for {year}: {exc}")
+            imd_year_cache[year] = None
             return None
 
     try:
@@ -314,6 +653,7 @@ def get_imd_year_dataset(year):
         return ds_year
     except Exception as exc:
         print(f"Could not open IMD observed rainfall for {year}: {exc}")
+        imd_year_cache[year] = None
         return None
 
 
@@ -529,6 +869,10 @@ DATE, CYCLE = get_latest_gfs_datetime()
 print(f"GFS Forecast -> {DATE} | Cycle {CYCLE} UTC")
 
 gfs_records = []
+hydrologic_gfs_records = {
+    unit_key: []
+    for unit_key in hydrologic_units
+}
 
 prev_tp = None
 prev_file = None
@@ -563,6 +907,16 @@ for fh in FORECAST_HOURS:
             "to_hour": fh,
             "rain_gfs_mm": val
         })
+
+    for unit_key, unit_gdf in hydrologic_units.items():
+        means_df = zonal_mean_points(rain_inc, unit_gdf, "rain_gfs_mm")
+        append_unit_records(
+            hydrologic_gfs_records[unit_key],
+            means_df,
+            from_hr,
+            fh,
+            "rain_gfs_mm"
+        )
 
     if prev_file and os.path.exists(prev_file):
         os.remove(prev_file)
@@ -618,6 +972,10 @@ gfs_distribution["rain_gfs_bc_mm"] = (
 # ------------------------------------------------------------------
 
 icon_records = []
+hydrologic_icon_records = {
+    unit_key: []
+    for unit_key in hydrologic_units
+}
 
 prev_tp = None
 prev_file = None
@@ -656,6 +1014,16 @@ for fh in FORECAST_HOURS:
             "to_hour": fh,
             "rain_icon_mm": val
         })
+
+    for unit_key, unit_gdf in hydrologic_units.items():
+        means_df = zonal_mean_points(rain_inc, unit_gdf, "rain_icon_mm")
+        append_unit_records(
+            hydrologic_icon_records[unit_key],
+            means_df,
+            from_hr,
+            fh,
+            "rain_icon_mm"
+        )
 
     if prev_file and os.path.exists(prev_file):
         os.remove(prev_file)
@@ -741,6 +1109,21 @@ distribution_df = distribution_df[
 ]
 
 daily_verification_df = update_daily_verification_archive(final_df)
+hydrologic_outputs = {}
+
+for unit_key in hydrologic_units:
+    if not hydrologic_gfs_records.get(unit_key):
+        continue
+
+    final_h, distribution_h = build_hydrologic_outputs(
+        hydrologic_gfs_records[unit_key],
+        hydrologic_icon_records.get(unit_key, []),
+        hydrologic_imd_means[unit_key]
+    )
+    hydrologic_outputs[unit_key] = {
+        "final": final_h,
+        "distribution": distribution_h
+    }
 
 # ------------------------------------------------------------------
 # STEP 6: SAVE OUTPUTS
@@ -766,10 +1149,26 @@ distribution_df.to_csv(
     index=False
 )
 
+for unit_key, output in hydrologic_outputs.items():
+    label = "Subbasin" if unit_key == "subbasin" else "Watershed"
+    output["final"].to_csv(
+        f"{OUTPUT_DIR}/India_24h_GFS_IMD_ICON_{label}_Rainfall.csv",
+        index=False
+    )
+    output["distribution"].to_csv(
+        f"{OUTPUT_DIR}/India_3h_GFS_IMD_ICON_{label}_Rainfall.csv",
+        index=False
+    )
+
 print("\n==============================================")
 print("FINAL SAFE GFS + ICON PIPELINE COMPLETED")
 print(f"Total districts : {final_df.shape[0]}")
 print(f"Alert districts : {alert_df.shape[0]}")
 print(f"3-hour records : {distribution_df.shape[0]}")
 print(f"Daily verification records : {daily_verification_df.shape[0]}")
+for unit_key, output in hydrologic_outputs.items():
+    print(
+        f"{unit_key.title()} units : {output['final'].shape[0]} | "
+        f"3-hour records : {output['distribution'].shape[0]}"
+    )
 print("==============================================")
