@@ -15,6 +15,7 @@ Models  : GFS (IMD bias-corrected) + ICON (raw, optional)
 
 import os
 import glob
+import shutil
 import requests
 import imdlib as imd
 import xarray as xr
@@ -37,6 +38,7 @@ SUBBASIN_SHP = os.path.join(HYDRO_DATA_DIR, "Subbasin.shp")
 WATERSHED_SHP = os.path.join(HYDRO_DATA_DIR, "Watershed.shp")
 
 IMD_DIR = "IMD_Rainfall"
+IMD_REALTIME_DIR = os.path.join(IMD_DIR, "realtime_rain")
 GFS_DIR = "GFS_TMP"
 ICON_DIR = "ICON_TMP"
 # OUTPUT_DIR = "FINAL_OUTPUT"
@@ -44,6 +46,7 @@ OUTPUT_DIR = "."
 DAILY_VERIFICATION_CSV = "India_Daily_GFS_IMD_Rainfall_Verification.csv"
 
 os.makedirs(IMD_DIR, exist_ok=True)
+os.makedirs(IMD_REALTIME_DIR, exist_ok=True)
 os.makedirs(GFS_DIR, exist_ok=True)
 os.makedirs(ICON_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
@@ -64,6 +67,216 @@ def remove_cfgrib_indexes(grib):
             os.remove(idx)
         except OSError:
             pass
+
+
+def imd_rain_path(year):
+    return os.path.join(IMD_DIR, "rain", f"{year}.grd")
+
+
+def prepare_imd_download(year, refresh=False):
+    path = imd_rain_path(year)
+    backup_path = f"{path}.codex-backup"
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    if os.path.exists(path):
+        size = os.path.getsize(path)
+
+        if size <= 0:
+            print(f"IMD rainfall file is empty -> {path}")
+            try:
+                os.remove(path)
+                print("Deleted empty IMD rainfall file; retrying download.")
+            except OSError as exc:
+                print(f"Could not delete empty IMD rainfall file: {exc}")
+                return path, backup_path, False
+        elif refresh:
+            print(f"Refreshing IMD rainfall data for year: {year}")
+            try:
+                if os.path.exists(backup_path):
+                    os.remove(backup_path)
+                shutil.copy2(path, backup_path)
+                os.remove(path)
+            except OSError as exc:
+                print(f"Could not prepare IMD refresh; using existing file. {exc}")
+                return path, backup_path, False
+        else:
+            print(f"IMD rainfall file found -> {path}")
+            print("Skipping IMD download.")
+            return path, backup_path, False
+    else:
+        print(f"IMD rainfall file missing -> {path}")
+
+    return path, backup_path, True
+
+
+def restore_imd_backup(path, backup_path):
+    if not os.path.exists(backup_path):
+        return False
+
+    try:
+        if os.path.exists(path):
+            os.remove(path)
+        shutil.move(backup_path, path)
+        print(f"Restored previous IMD rainfall file -> {path}")
+        return True
+    except OSError as exc:
+        print(f"Could not restore previous IMD rainfall file: {exc}")
+        return False
+
+
+def ensure_imd_rain_file(year, refresh=False):
+    path, backup_path, should_download = prepare_imd_download(year, refresh)
+
+    if not should_download:
+        return path if os.path.exists(path) and os.path.getsize(path) > 0 else None
+
+    print(f"Downloading IMD rainfall data for year: {year}...")
+
+    try:
+        imd.get_data(
+            "rain",
+            year,
+            year,
+            fn_format="yearwise",
+            file_dir=IMD_DIR
+        )
+    except Exception as exc:
+        print(f"IMD rainfall download failed for {year}: {exc}")
+        if restore_imd_backup(path, backup_path):
+            return path
+        return None
+
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        print(f"IMD rainfall file ready -> {path}")
+        try:
+            if os.path.exists(backup_path):
+                os.remove(backup_path)
+        except OSError:
+            pass
+        return path
+
+    print(f"IMD rainfall download did not produce usable file for {year}.")
+
+    if restore_imd_backup(path, backup_path):
+        return path
+
+    return None
+
+
+def open_imd_year_dataset(year, refresh=False):
+    if ensure_imd_rain_file(year, refresh=refresh) is None:
+        return None
+
+    try:
+        imd_year_data = imd.open_data(
+            "rain",
+            year,
+            year,
+            fn_format="yearwise",
+            file_dir=IMD_DIR
+        )
+        ds_year = imd_year_data.get_xarray()
+        ds_year["rain"] = ds_year["rain"].where(ds_year["rain"] != -999.0)
+        ds_year["rain"] = ds_year["rain"].rio.write_crs("EPSG:4326")
+        return ds_year
+    except Exception as exc:
+        print(f"Could not open IMD observed rainfall for {year}: {exc}")
+        return None
+
+
+def limit_imd_dataset_through(ds_year, cutoff_date):
+    times = pd.to_datetime(ds_year.time.values).normalize()
+    keep_index = np.where(times <= pd.Timestamp(cutoff_date))[0]
+
+    if len(keep_index) == 0:
+        return None, None
+
+    latest_available = times[keep_index].max().date()
+    return ds_year.isel(time=keep_index), latest_available
+
+
+def imd_realtime_rain_path(date_obj):
+    return os.path.join(
+        IMD_REALTIME_DIR,
+        f"rain_ind0.25_{date_obj:%y_%m_%d}.grd"
+    )
+
+
+def prepare_realtime_rain_file(date_obj, refresh=False):
+    path = imd_realtime_rain_path(date_obj)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+
+    if os.path.exists(path):
+        size = os.path.getsize(path)
+
+        if size <= 0:
+            print(f"IMD real-time rainfall file is empty -> {path}")
+            try:
+                os.remove(path)
+                print("Deleted empty real-time IMD file; retrying download.")
+            except OSError as exc:
+                print(f"Could not delete empty real-time IMD file: {exc}")
+                return False
+        elif refresh:
+            try:
+                os.remove(path)
+            except OSError as exc:
+                print(f"Could not refresh real-time IMD file: {exc}")
+                return False
+        else:
+            return True
+
+    return None
+
+
+def sanitize_realtime_dataset(ds_day):
+    ds_day["rain"] = ds_day["rain"].where(ds_day["rain"] != -999.0)
+    ds_day["rain"] = ds_day["rain"].rio.write_crs("EPSG:4326")
+    return ds_day
+
+
+def open_imd_realtime_day(date_obj, refresh=False):
+    date_str = date_obj.strftime("%Y-%m-%d")
+    existing_state = prepare_realtime_rain_file(date_obj, refresh=refresh)
+
+    if existing_state is True:
+        try:
+            data = imd.open_real_data(
+                "rain",
+                date_str,
+                date_str,
+                file_dir=IMD_REALTIME_DIR
+            )
+            return sanitize_realtime_dataset(data.get_xarray())
+        except Exception as exc:
+            print(f"Could not open cached IMD real-time rainfall for {date_str}: {exc}")
+            return open_imd_realtime_day(date_obj, refresh=True)
+
+    if existing_state is False:
+        return None
+
+    print(f"Downloading IMD real-time observed rainfall for date: {date_str}")
+
+    try:
+        data = imd.get_real_data(
+            "rain",
+            date_str,
+            date_str,
+            file_dir=IMD_REALTIME_DIR
+        )
+    except Exception as exc:
+        print(f"IMD real-time rainfall unavailable for {date_str}: {exc}")
+        return None
+
+    if data is None:
+        print(f"IMD real-time rainfall unavailable for {date_str}")
+        return None
+
+    try:
+        return sanitize_realtime_dataset(data.get_xarray())
+    except Exception as exc:
+        print(f"Could not open IMD real-time rainfall for {date_str}: {exc}")
+        return None
 
 
 def gfs_file_url(date, cycle, fh):
@@ -548,39 +761,24 @@ districts = gpd.read_file(DISTRICT_SHP).to_crs("EPSG:4326")
 hydrologic_units = load_hydrologic_units()
 
 # ------------------------------------------------------------------
-# STEP 1: IMD OBSERVED RAINFALL (LAST COMPLETE YEAR)
+# STEP 1: IMD OBSERVED RAINFALL
 # ------------------------------------------------------------------
 
-last_complete_year = datetime.utcnow().year - 1
-print(f"Using IMD rainfall data for year: {last_complete_year}")
+today_local = datetime.now().date()
+last_observed_date = today_local - timedelta(days=1)
+realtime_imd_year = last_observed_date.year
+baseline_imd_year = today_local.year - 1
 
-imd_grd_path = os.path.join(IMD_DIR, "rain", f"{last_complete_year}.grd")
+print(f"Checking IMD real-time observed rainfall through: {last_observed_date:%Y-%m-%d}")
+print(f"Using IMD annual bias baseline year: {baseline_imd_year}")
 
-if os.path.exists(imd_grd_path) and os.path.getsize(imd_grd_path) > 0:
-    print(f"IMD rainfall file found -> {imd_grd_path}")
-    print("Skipping IMD download.")
-else:
-    print(f"IMD rainfall file missing -> {imd_grd_path}")
-    print("Downloading IMD rainfall data...")
-    imd.get_data(
-        "rain",
-        last_complete_year,
-        last_complete_year,
-        fn_format="yearwise",
-        file_dir=IMD_DIR
+ds_imd = open_imd_year_dataset(baseline_imd_year, refresh=False)
+
+if ds_imd is None:
+    raise RuntimeError(
+        "No usable IMD annual rainfall file is available for "
+        f"{baseline_imd_year}."
     )
-
-imd_data = imd.open_data(
-    "rain",
-    last_complete_year,
-    last_complete_year,
-    fn_format="yearwise",
-    file_dir=IMD_DIR
-)
-
-ds_imd = imd_data.get_xarray()
-ds_imd["rain"] = ds_imd["rain"].where(ds_imd["rain"] != -999.0)
-ds_imd["rain"] = ds_imd["rain"].rio.write_crs("EPSG:4326")
 
 imd_means = []
 
@@ -614,47 +812,26 @@ if hydrologic_units:
             "imd_mean_mm"
         )
 
-imd_year_cache = {last_complete_year: ds_imd}
+imd_year_cache = {baseline_imd_year: ds_imd}
+imd_realtime_cache = {}
 
 
 def get_imd_year_dataset(year):
     if year in imd_year_cache:
         return imd_year_cache[year]
 
-    imd_grd = os.path.join(IMD_DIR, "rain", f"{year}.grd")
+    ds_year = open_imd_year_dataset(year, refresh=False)
+    imd_year_cache[year] = ds_year
+    return ds_year
 
-    if not (os.path.exists(imd_grd) and os.path.getsize(imd_grd) > 0):
-        try:
-            print(f"Downloading IMD observed rainfall for year: {year}")
-            imd.get_data(
-                "rain",
-                year,
-                year,
-                fn_format="yearwise",
-                file_dir=IMD_DIR
-            )
-        except Exception as exc:
-            print(f"IMD observed rainfall unavailable for {year}: {exc}")
-            imd_year_cache[year] = None
-            return None
 
-    try:
-        imd_year_data = imd.open_data(
-            "rain",
-            year,
-            year,
-            fn_format="yearwise",
-            file_dir=IMD_DIR
-        )
-        ds_year = imd_year_data.get_xarray()
-        ds_year["rain"] = ds_year["rain"].where(ds_year["rain"] != -999.0)
-        ds_year["rain"] = ds_year["rain"].rio.write_crs("EPSG:4326")
-        imd_year_cache[year] = ds_year
-        return ds_year
-    except Exception as exc:
-        print(f"Could not open IMD observed rainfall for {year}: {exc}")
-        imd_year_cache[year] = None
-        return None
+def get_imd_realtime_day_dataset(date_obj):
+    date_key = date_obj.strftime("%Y%m%d")
+
+    if date_key not in imd_realtime_cache:
+        imd_realtime_cache[date_key] = open_imd_realtime_day(date_obj)
+
+    return imd_realtime_cache[date_key]
 
 
 def observed_rainfall_by_district(date_yyyymmdd):
@@ -662,6 +839,34 @@ def observed_rainfall_by_district(date_yyyymmdd):
         date_obj = datetime.strptime(str(date_yyyymmdd), "%Y%m%d")
     except ValueError:
         return {}, "UNAVAILABLE"
+
+    if date_obj.date() > last_observed_date:
+        return {}, "PENDING"
+
+    if date_obj.year == realtime_imd_year:
+        ds_day = get_imd_realtime_day_dataset(date_obj.date())
+
+        if ds_day is None:
+            return {}, "PENDING"
+
+        daily_rain = ds_day["rain"].isel(time=0)
+        observed = {}
+
+        for _, row in districts.iterrows():
+            state = row[STATE_COL]
+            district = row[DIST_COL]
+
+            try:
+                clip = daily_rain.rio.clip(
+                    [row.geometry], districts.crs, drop=True
+                )
+                value = float(clip.mean(dim=["lat", "lon"]).values)
+            except Exception:
+                value = float("nan")
+
+            observed[row_key_from_values(state, district)] = value
+
+        return observed, "MATCHED"
 
     ds_year = get_imd_year_dataset(date_obj.year)
 
