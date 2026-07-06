@@ -1141,23 +1141,63 @@ function periodForRecord(record, mode) {
     };
 }
 
+function verificationIssueSortValue(record) {
+    const issueDate = String(record.forecast_issue_date || "");
+    const cycle = String(record.cycle_utc || "").padStart(2, "0");
+    return `${issueDate}${cycle}`;
+}
+
+function verificationIssueLabel(record) {
+    const issueDate = record.forecast_issue_date
+        ? formatCompactDate(record.forecast_issue_date)
+        : "-";
+    const cycle = record.cycle_utc
+        ? `${String(record.cycle_utc).padStart(2, "0")} UTC`
+        : "cycle -";
+    return `${issueDate} ${cycle}`;
+}
+
+function latestDailyVerificationRecords(records) {
+    const byDate = new Map();
+
+    records.forEach(record => {
+        if (!record.valid_date) {
+            return;
+        }
+
+        const existing = byDate.get(record.valid_date);
+
+        if (
+            !existing ||
+            verificationIssueSortValue(record) > verificationIssueSortValue(existing)
+        ) {
+            byDate.set(record.valid_date, record);
+        }
+    });
+
+    return Array.from(byDate.values())
+        .sort((a, b) => a.valid_date.localeCompare(b.valid_date));
+}
+
 function aggregateVerificationRecords(records, mode) {
+    const dailyRecords = latestDailyVerificationRecords(records);
+
     if (mode === "daily") {
-        return records.map(record => ({
-            key: `${record.valid_date}-${record.cycle_utc}`,
+        return dailyRecords.map(record => ({
+            key: record.valid_date,
             label: formatCompactDate(record.valid_date),
-            sortValue: `${record.valid_date}-${record.cycle_utc}`,
+            sortValue: record.valid_date,
             forecast: record.rain_forecast_daily_mm,
             observed: record.imd_observed_mm,
             count: 1,
             observedCount: record.imd_observed_mm === null ? 0 : 1,
-            tooltip: `${formatCompactDate(record.valid_date)} | Forecast: ${formatMetric(record.rain_forecast_daily_mm, 2, " mm")} | IMD: ${formatMetric(record.imd_observed_mm, 2, " mm")}`
+            tooltip: `${formatCompactDate(record.valid_date)} | Issue: ${verificationIssueLabel(record)} | Forecast: ${formatMetric(record.rain_forecast_daily_mm, 2, " mm")} | IMD: ${formatMetric(record.imd_observed_mm, 2, " mm")}`
         }));
     }
 
     const groups = new Map();
 
-    records.forEach(record => {
+    dailyRecords.forEach(record => {
         const period = periodForRecord(record, mode);
         if (!groups.has(period.key)) {
             groups.set(period.key, {
@@ -1479,11 +1519,12 @@ function renderVerification(row) {
     const mode = elements.verificationPeriodBox.value || "daily";
     const points = aggregateVerificationRecords(records, mode);
     const metrics = verificationMetrics(points);
+    const dailyRecordCount = latestDailyVerificationRecords(records).length;
 
     elements.verificationSummary.textContent =
         `${row.district}, ${row.state} | Forecast compared with IMD observed rainfall when available`;
     elements.verificationNote.textContent = records.length
-        ? `${records.length} archived days`
+        ? `${dailyRecordCount} daily dates | ${records.length} archived cycles`
         : "pending";
     elements.downloadDistrictVerification.disabled = records.length === 0;
     elements.verificationMatched.textContent = metrics.matched.toLocaleString("en-IN");
