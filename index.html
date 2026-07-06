@@ -1056,9 +1056,9 @@ function enrichVerificationRows(rows) {
             rain_gfs_bc_24h_mm: toOptionalNumber(row.rain_gfs_bc_24h_mm),
             rain_icon_24h_mm: toOptionalNumber(row.rain_icon_24h_mm),
             imd_observed_mm: toOptionalNumber(row.imd_observed_mm),
-            error_gfs_bc_mm: toOptionalNumber(row.error_gfs_bc_mm),
-            abs_error_gfs_bc_mm: toOptionalNumber(row.abs_error_gfs_bc_mm),
-            pct_error_gfs_bc: toOptionalNumber(row.pct_error_gfs_bc),
+            error_gfs_raw_mm: toOptionalNumber(row.error_gfs_raw_mm ?? row.error_gfs_bc_mm),
+            abs_error_gfs_raw_mm: toOptionalNumber(row.abs_error_gfs_raw_mm ?? row.abs_error_gfs_bc_mm),
+            pct_error_gfs_raw: toOptionalNumber(row.pct_error_gfs_raw ?? row.pct_error_gfs_bc),
             observed_status: row.observed_status || "PENDING"
         }))
         .sort((a, b) => (
@@ -1179,6 +1179,10 @@ function latestDailyVerificationRecords(records) {
         .sort((a, b) => a.valid_date.localeCompare(b.valid_date));
 }
 
+function verificationForecastValue(record) {
+    return record.rain_gfs_24h_mm ?? record.rain_forecast_daily_mm;
+}
+
 function aggregateVerificationRecords(records, mode) {
     const dailyRecords = latestDailyVerificationRecords(records);
 
@@ -1187,11 +1191,11 @@ function aggregateVerificationRecords(records, mode) {
             key: record.valid_date,
             label: formatCompactDate(record.valid_date),
             sortValue: record.valid_date,
-            forecast: record.rain_forecast_daily_mm,
+            forecast: verificationForecastValue(record),
             observed: record.imd_observed_mm,
             count: 1,
             observedCount: record.imd_observed_mm === null ? 0 : 1,
-            tooltip: `${formatCompactDate(record.valid_date)} | Issue: ${verificationIssueLabel(record)} | Forecast: ${formatMetric(record.rain_forecast_daily_mm, 2, " mm")} | IMD: ${formatMetric(record.imd_observed_mm, 2, " mm")}`
+            tooltip: `${formatCompactDate(record.valid_date)} | Issue: ${verificationIssueLabel(record)} | Raw GFS: ${formatMetric(record.rain_gfs_24h_mm, 2, " mm")} | Bias-corrected: ${formatMetric(record.rain_gfs_bc_24h_mm, 2, " mm")} | IMD: ${formatMetric(record.imd_observed_mm, 2, " mm")}`
         }));
     }
 
@@ -1211,8 +1215,10 @@ function aggregateVerificationRecords(records, mode) {
 
         const group = groups.get(period.key);
 
-        if (record.rain_forecast_daily_mm !== null) {
-            group.forecast += record.rain_forecast_daily_mm;
+        const forecastValue = verificationForecastValue(record);
+
+        if (forecastValue !== null) {
+            group.forecast += forecastValue;
         }
 
         if (record.imd_observed_mm !== null) {
@@ -1227,7 +1233,7 @@ function aggregateVerificationRecords(records, mode) {
         .map(group => ({
             ...group,
             observed: group.observedCount ? group.observed : null,
-            tooltip: `${group.label} | Forecast total: ${formatMetric(group.forecast, 2, " mm")} | IMD total: ${formatMetric(group.observedCount ? group.observed : null, 2, " mm")}`
+            tooltip: `${group.label} | Raw GFS total: ${formatMetric(group.forecast, 2, " mm")} | IMD total: ${formatMetric(group.observedCount ? group.observed : null, 2, " mm")}`
         }))
         .sort((a, b) => a.sortValue.localeCompare(b.sortValue));
 }
@@ -1522,7 +1528,7 @@ function renderVerification(row) {
     const dailyRecordCount = latestDailyVerificationRecords(records).length;
 
     elements.verificationSummary.textContent =
-        `${row.district}, ${row.state} | Forecast compared with IMD observed rainfall when available`;
+        `${row.district}, ${row.state} | Raw GFS forecast compared with IMD observed rainfall when available`;
     elements.verificationNote.textContent = records.length
         ? `${dailyRecordCount} daily dates | ${records.length} archived cycles`
         : "pending";
@@ -1679,10 +1685,10 @@ function buildVerificationSvg(points, mode) {
             <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#9aa6a0" />
             ${labels}
             <rect x="${margin.left}" y="9" width="10" height="10" fill="rgba(31,122,77,0.72)" />
-            <text x="${margin.left + 16}" y="18" font-size="11" fill="#1f7a4d">Forecast</text>
+            <text x="${margin.left + 16}" y="18" font-size="11" fill="#1f7a4d">Raw GFS</text>
             <rect x="${margin.left + 84}" y="9" width="10" height="10" fill="rgba(201,58,58,0.72)" />
             <text x="${margin.left + 100}" y="18" font-size="11" fill="#c93a3a">IMD observed</text>
-            <text x="${width - margin.right}" y="18" text-anchor="end" font-size="11" fill="#5e6b66">${periodLabel} comparison</text>
+            <text x="${width - margin.right}" y="18" text-anchor="end" font-size="11" fill="#5e6b66">${periodLabel} raw GFS comparison</text>
             <text x="${width / 2}" y="${height - 10}" text-anchor="middle" font-size="10" fill="#5e6b66">Valid date / period</text>
         </svg>
     `;
@@ -1734,9 +1740,9 @@ const verificationCsvHeaders = [
     "rain_icon_24h_mm",
     "imd_observed_mm",
     "observed_status",
-    "error_gfs_bc_mm",
-    "abs_error_gfs_bc_mm",
-    "pct_error_gfs_bc",
+    "error_gfs_raw_mm",
+    "abs_error_gfs_raw_mm",
+    "pct_error_gfs_raw",
     "updated_at_utc"
 ];
 

@@ -940,20 +940,20 @@ def add_observed_values(archive_df):
     forecast_numeric = safe_numeric(archive_df["rain_forecast_daily_mm"])
     valid_pair = observed_numeric.notna() & forecast_numeric.notna()
 
-    archive_df["error_gfs_bc_mm"] = pd.NA
-    archive_df["abs_error_gfs_bc_mm"] = pd.NA
-    archive_df["pct_error_gfs_bc"] = pd.NA
+    archive_df["error_gfs_raw_mm"] = pd.NA
+    archive_df["abs_error_gfs_raw_mm"] = pd.NA
+    archive_df["pct_error_gfs_raw"] = pd.NA
 
-    archive_df.loc[valid_pair, "error_gfs_bc_mm"] = (
+    archive_df.loc[valid_pair, "error_gfs_raw_mm"] = (
         forecast_numeric[valid_pair] - observed_numeric[valid_pair]
     )
-    archive_df.loc[valid_pair, "abs_error_gfs_bc_mm"] = (
-        archive_df.loc[valid_pair, "error_gfs_bc_mm"].abs()
+    archive_df.loc[valid_pair, "abs_error_gfs_raw_mm"] = (
+        archive_df.loc[valid_pair, "error_gfs_raw_mm"].abs()
     )
 
     non_zero_observed = valid_pair & (observed_numeric.abs() >= 0.1)
-    archive_df.loc[non_zero_observed, "pct_error_gfs_bc"] = (
-        archive_df.loc[non_zero_observed, "error_gfs_bc_mm"] /
+    archive_df.loc[non_zero_observed, "pct_error_gfs_raw"] = (
+        archive_df.loc[non_zero_observed, "error_gfs_raw_mm"] /
         observed_numeric[non_zero_observed] * 100.0
     )
 
@@ -982,9 +982,7 @@ def update_daily_verification_archive(latest_df):
     daily_df["rain_gfs_mm"] = safe_numeric(daily_df["rain_gfs_mm"])
     daily_df["rain_gfs_bc_mm"] = safe_numeric(daily_df["rain_gfs_bc_mm"])
     daily_df["rain_icon_mm"] = safe_numeric(daily_df["rain_icon_mm"])
-    daily_df["rain_forecast_daily_mm"] = daily_df["rain_gfs_bc_mm"].fillna(
-        daily_df["rain_gfs_mm"]
-    )
+    daily_df["rain_forecast_daily_mm"] = daily_df["rain_gfs_mm"]
 
     daily_df = daily_df.rename(columns={
         "rain_gfs_mm": "rain_gfs_24h_mm",
@@ -1000,9 +998,9 @@ def update_daily_verification_archive(latest_df):
     daily_df["valid_date"] = valid_date
     daily_df["imd_observed_mm"] = pd.NA
     daily_df["observed_status"] = "PENDING"
-    daily_df["error_gfs_bc_mm"] = pd.NA
-    daily_df["abs_error_gfs_bc_mm"] = pd.NA
-    daily_df["pct_error_gfs_bc"] = pd.NA
+    daily_df["error_gfs_raw_mm"] = pd.NA
+    daily_df["abs_error_gfs_raw_mm"] = pd.NA
+    daily_df["pct_error_gfs_raw"] = pd.NA
     daily_df["updated_at_utc"] = updated_at
 
     columns = [
@@ -1021,9 +1019,9 @@ def update_daily_verification_archive(latest_df):
         "rain_icon_24h_mm",
         "imd_observed_mm",
         "observed_status",
-        "error_gfs_bc_mm",
-        "abs_error_gfs_bc_mm",
-        "pct_error_gfs_bc",
+        "error_gfs_raw_mm",
+        "abs_error_gfs_raw_mm",
+        "pct_error_gfs_raw",
         "updated_at_utc"
     ]
 
@@ -1047,6 +1045,10 @@ def update_daily_verification_archive(latest_df):
         "forecast_issue_date"
     ].astype(str)
     archive_df["valid_date"] = archive_df["valid_date"].astype(str)
+    archive_df["rain_forecast_daily_mm"] = (
+        safe_numeric(archive_df["rain_gfs_24h_mm"])
+        .fillna(safe_numeric(archive_df["rain_forecast_daily_mm"]))
+    )
     archive_df = archive_df.drop_duplicates(
         subset=[
             "state",
