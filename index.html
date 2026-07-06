@@ -430,7 +430,7 @@ button:disabled {
             <option value="ALERT">Only alerts</option>
             <option value="MODERATE">Moderate and above</option>
             <option value="HEAVY">Heavy and above</option>
-            <option value="RAIN50">Bias-corrected rainfall > 50 mm</option>
+            <option value="RAIN50">Raw GFS rainfall > 50 mm</option>
         </select>
         <select id="basinBox">
             <option value="ALL">All basins</option>
@@ -441,7 +441,7 @@ button:disabled {
         <div class="stat"><span id="totalLabel">Total districts</span><strong id="totalCount">0</strong></div>
         <div class="stat"><span id="visibleLabel">Visible districts</span><strong id="visibleCount">0</strong></div>
         <div class="stat"><span id="alertLabel">Alert districts</span><strong id="alertCount">0</strong></div>
-        <div class="stat"><span>Maximum rainfall</span><strong id="maxRain">0 mm</strong></div>
+        <div class="stat"><span>Max raw GFS</span><strong id="maxRain">0 mm</strong></div>
         <div class="stat"><span id="topLabel">Top district</span><strong id="topDistrict">-</strong></div>
     </section>
 
@@ -559,12 +559,13 @@ const districtColumns = [
     { key: "state", label: "State" },
     { key: "district", label: "District" },
     { key: "basin", label: "Basin" },
-    { key: "rain_gfs_mm", label: "GFS mm", numeric: true },
+    { key: "rain_gfs_mm", label: "Raw GFS mm", numeric: true },
     { key: "imd_mean_mm", label: "IMD mean mm", numeric: true },
     { key: "bias_factor", label: "Bias factor", numeric: true },
     { key: "rain_gfs_bc_mm", label: "Bias-corrected mm", numeric: true },
     { key: "rain_icon_mm", label: "ICON mm", numeric: true },
-    { key: "alert_gfs_bc", label: "GFS alert", alert: true },
+    { key: "alert_gfs_raw", label: "Raw GFS alert", alert: true },
+    { key: "alert_gfs_bc", label: "BC alert", alert: true },
     { key: "alert_icon", label: "ICON alert", alert: true }
 ];
 
@@ -574,12 +575,13 @@ const hydroColumns = [
     { key: "basin", label: "Basin" },
     { key: "sub_basin", label: "Subbasin" },
     { key: "area_sqkm", label: "Area sq km", numeric: true },
-    { key: "rain_gfs_mm", label: "GFS mm", numeric: true },
+    { key: "rain_gfs_mm", label: "Raw GFS mm", numeric: true },
     { key: "imd_mean_mm", label: "IMD mean mm", numeric: true },
     { key: "bias_factor", label: "Bias factor", numeric: true },
     { key: "rain_gfs_bc_mm", label: "Bias-corrected mm", numeric: true },
     { key: "rain_icon_mm", label: "ICON mm", numeric: true },
-    { key: "alert_gfs_bc", label: "GFS alert", alert: true },
+    { key: "alert_gfs_raw", label: "Raw GFS alert", alert: true },
+    { key: "alert_gfs_bc", label: "BC alert", alert: true },
     { key: "alert_icon", label: "ICON alert", alert: true }
 ];
 
@@ -842,16 +844,34 @@ function normalizeAlert(value) {
     return alertRank[text] === undefined ? "NO ALERT" : text;
 }
 
+function alertForRainfall(value) {
+    const rain = Number(value);
+
+    if (!Number.isFinite(rain)) {
+        return "NO ALERT";
+    }
+
+    if (rain >= 204.5) return "EXTREMELY HEAVY";
+    if (rain >= 115.6) return "VERY HEAVY";
+    if (rain >= 64.5) return "HEAVY";
+    if (rain >= 10.0) return "MODERATE";
+    return "NO ALERT";
+}
+
+function mapRainfallValue(row) {
+    return Number.isFinite(row?.rain_gfs_mm) ? row.rain_gfs_mm : 0;
+}
+
 function hasAlert(row) {
     return Math.max(
-        alertRank[normalizeAlert(row.alert_gfs_bc)],
+        alertRank[normalizeAlert(row.alert_gfs_raw)],
         alertRank[normalizeAlert(row.alert_icon)]
     ) > 0;
 }
 
 function maxAlertRank(row) {
     return Math.max(
-        alertRank[normalizeAlert(row.alert_gfs_bc)],
+        alertRank[normalizeAlert(row.alert_gfs_raw)],
         alertRank[normalizeAlert(row.alert_icon)]
     );
 }
@@ -967,6 +987,8 @@ function enrichForecastRows(rows, layer = "district") {
                 ? row.district
                 : row.unit_name || row.unit_id || "";
 
+            const rawGfsRain = toNumber(row.rain_gfs_mm);
+
             return {
                 ...row,
                 unit_type: unitType,
@@ -975,9 +997,10 @@ function enrichForecastRows(rows, layer = "district") {
                 basin,
                 sub_basin: row.sub_basin || "",
                 area_sqkm: row.area_sqkm === "" ? "" : toNumber(row.area_sqkm),
+                alert_gfs_raw: alertForRainfall(rawGfsRain),
                 alert_gfs_bc: normalizeAlert(row.alert_gfs_bc),
                 alert_icon: normalizeAlert(row.alert_icon),
-                rain_gfs_mm: toNumber(row.rain_gfs_mm),
+                rain_gfs_mm: rawGfsRain,
                 imd_mean_mm: row.imd_mean_mm === "" ? "" : toNumber(row.imd_mean_mm),
                 bias_factor: row.bias_factor === "" ? "" : toNumber(row.bias_factor),
                 rain_gfs_bc_mm: toNumber(row.rain_gfs_bc_mm),
@@ -1290,7 +1313,7 @@ function updateSummary(rows) {
     const config = layerConfigs[activeLayer];
     const alertRows = rows.filter(hasAlert);
     const topRow = rows.reduce((best, row) => (
-        !best || row.rain_gfs_bc_mm > best.rain_gfs_bc_mm ? row : best
+        !best || mapRainfallValue(row) > mapRainfallValue(best) ? row : best
     ), null);
 
     elements.totalLabel.textContent = config.totalLabel;
@@ -1302,7 +1325,7 @@ function updateSummary(rows) {
     elements.totalCount.textContent = forecastData.length.toLocaleString("en-IN");
     elements.visibleCount.textContent = rows.length.toLocaleString("en-IN");
     elements.alertCount.textContent = alertRows.length.toLocaleString("en-IN");
-    elements.maxRain.textContent = topRow ? `${formatNumber(topRow.rain_gfs_bc_mm)} mm` : "0 mm";
+    elements.maxRain.textContent = topRow ? `${formatNumber(mapRainfallValue(topRow))} mm` : "0 mm";
     elements.topDistrict.textContent = topRow ? displayName(topRow) : "-";
 
     const firstRow = forecastData[0];
@@ -1311,12 +1334,12 @@ function updateSummary(rows) {
         : "";
 
     elements.tableNote.textContent = `${rows.length.toLocaleString("en-IN")} shown`;
-    elements.mapNote.textContent = `${rows.length.toLocaleString("en-IN")} active`;
+    elements.mapNote.textContent = `${rows.length.toLocaleString("en-IN")} active | raw GFS`;
 }
 
 function chooseDefaultDistrict(rows) {
     return rows.reduce((best, row) => (
-        !best || row.rain_gfs_bc_mm > best.rain_gfs_bc_mm ? row : best
+        !best || mapRainfallValue(row) > mapRainfallValue(best) ? row : best
     ), null) || rows[0] || null;
 }
 
@@ -1335,7 +1358,7 @@ function matchesAlertFilter(row, filter) {
     if (filter === "ALERT") return rank > 0;
     if (filter === "MODERATE") return rank >= alertRank.MODERATE;
     if (filter === "HEAVY") return rank >= alertRank.HEAVY;
-    if (filter === "RAIN50") return row.rain_gfs_bc_mm > 50;
+    if (filter === "RAIN50") return mapRainfallValue(row) > 50;
     return true;
 }
 
@@ -1392,10 +1415,10 @@ function drawMap() {
                 };
             }
 
-            const alert = normalizeAlert(row.alert_gfs_bc);
+            const alert = normalizeAlert(row.alert_gfs_raw);
             const selected = rowKey(row) === selectedDistrictKey;
             return {
-                fillColor: getColor(row.rain_gfs_bc_mm),
+                fillColor: getColor(mapRainfallValue(row)),
                 weight: selected ? 3 : (hasAlert(row) ? 2 : 1),
                 color: selected ? "#111111" : (alert !== "NO ALERT" ? "#b72121" : "#293530"),
                 fillOpacity: active ? 0.72 : 0.06,
@@ -1416,8 +1439,10 @@ function drawMap() {
                 `<b>${escapeHtml(name)}</b><br>` +
                 `${escapeHtml(displayContext(row) || layerConfigs[activeLayer].label)}<br>` +
                 `Basin: ${escapeHtml(row.basin || "-")}<br>` +
+                `Raw GFS rainfall: ${formatNumber(row.rain_gfs_mm)} mm<br>` +
                 `Bias-corrected rainfall: ${formatNumber(row.rain_gfs_bc_mm)} mm<br>` +
-                `GFS alert: ${escapeHtml(row.alert_gfs_bc)}<br>` +
+                `Raw GFS alert: ${escapeHtml(row.alert_gfs_raw)}<br>` +
+                `BC alert: ${escapeHtml(row.alert_gfs_bc)}<br>` +
                 `ICON alert: ${escapeHtml(row.alert_icon)}`
             );
             layer.on("click", () => selectDistrict(row));
@@ -1474,7 +1499,7 @@ function renderDistribution(row) {
     const records = distributionMap[rowKey(row)] || [];
     const cycleText = records[0]?.cycle_time_ist ? ` | Cycle: ${records[0].cycle_time_ist}` : "";
     elements.selectedDistrictSummary.textContent =
-        `${displayName(row)}${displayContext(row) ? `, ${displayContext(row)}` : ""} | 24h bias-corrected total: ${formatNumber(row.rain_gfs_bc_mm)} mm${cycleText}`;
+        `${displayName(row)}${displayContext(row) ? `, ${displayContext(row)}` : ""} | 24h raw GFS total: ${formatNumber(row.rain_gfs_mm)} mm | bias-corrected: ${formatNumber(row.rain_gfs_bc_mm)} mm${cycleText}`;
     elements.distributionNote.textContent = records.length
         ? `${records.length} intervals | IST valid time`
         : "pending";
@@ -1553,7 +1578,7 @@ function buildDistributionSvg(records) {
     const margin = { top: 18, right: 20, bottom: 78, left: 48 };
     const plotWidth = width - margin.left - margin.right;
     const plotHeight = height - margin.top - margin.bottom;
-    const values = records.flatMap(record => [record.rain_gfs_bc_mm, record.rain_icon_mm]);
+    const values = records.flatMap(record => [record.rain_gfs_mm, record.rain_icon_mm]);
     const maxRain = Math.max(1, ...values);
     const tickCount = 4;
     const barGap = 6;
@@ -1575,10 +1600,10 @@ function buildDistributionSvg(records) {
     }).join("");
 
     const bars = records.map((record, index) => {
-        const barHeight = margin.top + plotHeight - y(record.rain_gfs_bc_mm);
+        const barHeight = margin.top + plotHeight - y(record.rain_gfs_mm);
         return `
-            <rect x="${x(index)}" y="${y(record.rain_gfs_bc_mm)}" width="${barWidth}" height="${barHeight}" fill="rgba(31,122,77,0.72)">
-                <title>${escapeHtml(record.time_window_ist || record.interval_label)} | GFS BC: ${formatNumber(record.rain_gfs_bc_mm)} mm | ICON: ${formatNumber(record.rain_icon_mm)} mm</title>
+            <rect x="${x(index)}" y="${y(record.rain_gfs_mm)}" width="${barWidth}" height="${barHeight}" fill="rgba(31,122,77,0.72)">
+                <title>${escapeHtml(record.time_window_ist || record.interval_label)} | Raw GFS: ${formatNumber(record.rain_gfs_mm)} mm | Bias-corrected: ${formatNumber(record.rain_gfs_bc_mm)} mm | ICON: ${formatNumber(record.rain_icon_mm)} mm</title>
             </rect>
         `;
     }).join("");
@@ -1609,7 +1634,7 @@ function buildDistributionSvg(records) {
             <line x1="${margin.left}" y1="${margin.top + plotHeight}" x2="${width - margin.right}" y2="${margin.top + plotHeight}" stroke="#9aa6a0" />
             <line x1="${margin.left}" y1="${margin.top}" x2="${margin.left}" y2="${margin.top + plotHeight}" stroke="#9aa6a0" />
             ${labels}
-            <text x="${margin.left}" y="13" font-size="11" fill="#1f7a4d">GFS bias-corrected bars</text>
+            <text x="${margin.left}" y="13" font-size="11" fill="#1f7a4d">Raw GFS bars</text>
             <text x="${width - margin.right}" y="13" text-anchor="end" font-size="11" fill="#c93a3a">ICON line</text>
             <text x="${width / 2}" y="${height - 9}" text-anchor="middle" font-size="10" fill="#5e6b66">Forecast valid time (IST)</text>
         </svg>
