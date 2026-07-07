@@ -44,6 +44,18 @@ ICON_DIR = "ICON_TMP"
 # OUTPUT_DIR = "FINAL_OUTPUT"
 OUTPUT_DIR = "."
 DAILY_VERIFICATION_CSV = "India_Daily_GFS_IMD_Rainfall_Verification.csv"
+DISTRICT_DAILY_VERIFICATION_ALIAS_CSV = (
+    "India_Daily_GFS_IMD_District_Verification.csv"
+)
+SUBBASIN_DAILY_VERIFICATION_CSV = (
+    "India_Daily_GFS_IMD_Subbasin_Verification.csv"
+)
+WATERSHED_DAILY_VERIFICATION_CSV = (
+    "India_Daily_GFS_IMD_Watershed_Verification.csv"
+)
+DISTRICT_3H_ARCHIVE_CSV = "India_3h_GFS_District_Archive.csv"
+SUBBASIN_3H_ARCHIVE_CSV = "India_3h_GFS_Subbasin_Archive.csv"
+WATERSHED_3H_ARCHIVE_CSV = "India_3h_GFS_Watershed_Archive.csv"
 CALIBRATION_THRESHOLD_MM = 12.0
 CALIBRATION_FACTOR_MIN = 0.25
 CALIBRATION_FACTOR_MAX = 4.0
@@ -597,6 +609,274 @@ UNIT_COLUMNS = [
     "area_sqkm"
 ]
 
+DAILY_ARCHIVE_COLUMNS = UNIT_COLUMNS + [
+    "state",
+    "district",
+    "forecast_issue_date",
+    "cycle_utc",
+    "forecast_issue_time_utc",
+    "valid_start_utc",
+    "valid_end_utc",
+    "valid_date",
+    "rain_forecast_daily_mm",
+    "rain_gfs_24h_mm",
+    "bias_factor",
+    "rain_gfs_bc_24h_mm",
+    "gfs_cal_factor",
+    "gfs_cal_threshold_mm",
+    "gfs_cal_samples",
+    "rain_gfs_cal_24h_mm",
+    "rain_icon_24h_mm",
+    "imd_observed_mm",
+    "observed_status",
+    "error_gfs_raw_mm",
+    "abs_error_gfs_raw_mm",
+    "pct_error_gfs_raw",
+    "updated_at_utc"
+]
+
+THREE_H_ARCHIVE_COLUMNS = UNIT_COLUMNS + [
+    "state",
+    "district",
+    "forecast_issue_date",
+    "cycle_utc",
+    "forecast_issue_time_utc",
+    "from_hour",
+    "to_hour",
+    "interval_label",
+    "valid_start_utc",
+    "valid_end_utc",
+    "valid_date",
+    "rain_gfs_mm",
+    "bias_factor",
+    "rain_gfs_bc_mm",
+    "rain_icon_mm",
+    "imd_observed_mm",
+    "observed_status",
+    "error_gfs_raw_mm",
+    "abs_error_gfs_raw_mm",
+    "pct_error_gfs_raw",
+    "updated_at_utc"
+]
+
+DAILY_ARCHIVE_FILES = {
+    "district": DAILY_VERIFICATION_CSV,
+    "subbasin": SUBBASIN_DAILY_VERIFICATION_CSV,
+    "watershed": WATERSHED_DAILY_VERIFICATION_CSV
+}
+
+THREE_H_ARCHIVE_FILES = {
+    "district": DISTRICT_3H_ARCHIVE_CSV,
+    "subbasin": SUBBASIN_3H_ARCHIVE_CSV,
+    "watershed": WATERSHED_3H_ARCHIVE_CSV
+}
+
+
+def issue_datetime():
+    return datetime.strptime(f"{DATE}{CYCLE}", "%Y%m%d%H")
+
+
+def ensure_columns(df, columns):
+    result = df.copy()
+
+    for col in columns:
+        if col not in result.columns:
+            result[col] = pd.NA
+
+    return result[columns]
+
+
+def normalize_daily_archive_identity(archive_df, unit_type):
+    archive_df = ensure_columns(archive_df, DAILY_ARCHIVE_COLUMNS)
+    archive_df["unit_type"] = archive_df["unit_type"].fillna(unit_type)
+    archive_df["unit_type"] = archive_df["unit_type"].replace("", unit_type)
+
+    if unit_type == "district":
+        archive_df["state"] = archive_df["state"].fillna("")
+        archive_df["district"] = archive_df["district"].fillna("")
+        archive_df["unit_id"] = archive_df.apply(
+            lambda row: row["unit_id"]
+            if pd.notna(row["unit_id"]) and str(row["unit_id"]) not in ["", "nan"]
+            else row_key_from_values(row["state"], row["district"]),
+            axis=1
+        )
+        archive_df["unit_name"] = archive_df["unit_name"].fillna("")
+        missing_name = archive_df["unit_name"].astype(str).isin(["", "nan"])
+        archive_df.loc[missing_name, "unit_name"] = archive_df.loc[
+            missing_name,
+            "district"
+        ]
+    else:
+        archive_df["state"] = archive_df["state"].fillna("")
+        archive_df["district"] = archive_df["district"].fillna("")
+
+    archive_df["cycle_utc"] = archive_df["cycle_utc"].astype(str).str.zfill(2)
+    archive_df["forecast_issue_date"] = (
+        archive_df["forecast_issue_date"].astype(str)
+    )
+    archive_df["valid_date"] = archive_df["valid_date"].astype(str)
+
+    return archive_df
+
+
+def archive_row_key(row):
+    return f"{row.get('unit_type', '')}||{row.get('unit_id', '')}"
+
+
+def prepare_daily_archive_rows(latest_df, unit_type):
+    issue_dt = issue_datetime()
+    valid_start = issue_dt
+    valid_end = issue_dt + timedelta(hours=24)
+    valid_date = valid_end.strftime("%Y%m%d")
+    updated_at = iso_utc(datetime.utcnow())
+    daily_df = latest_df.copy()
+
+    if unit_type == "district":
+        daily_df["unit_type"] = "district"
+        daily_df["unit_id"] = daily_df.apply(
+            lambda row: row_key_from_values(row["state"], row["district"]),
+            axis=1
+        )
+        daily_df["unit_name"] = daily_df["district"]
+        daily_df["basin"] = daily_df.get("basin", "")
+        daily_df["sub_basin"] = ""
+        daily_df["area_sqkm"] = pd.NA
+    else:
+        daily_df["state"] = ""
+        daily_df["district"] = ""
+        daily_df["gfs_cal_factor"] = pd.NA
+        daily_df["gfs_cal_threshold_mm"] = pd.NA
+        daily_df["gfs_cal_samples"] = 0
+        daily_df["rain_gfs_cal_mm"] = pd.NA
+
+    daily_df["rain_gfs_mm"] = safe_numeric(daily_df["rain_gfs_mm"])
+    daily_df["rain_gfs_bc_mm"] = safe_numeric(daily_df["rain_gfs_bc_mm"])
+    daily_df["gfs_cal_factor"] = safe_numeric(daily_df["gfs_cal_factor"])
+    daily_df["gfs_cal_threshold_mm"] = safe_numeric(
+        daily_df["gfs_cal_threshold_mm"]
+    )
+    daily_df["gfs_cal_samples"] = (
+        safe_numeric(daily_df["gfs_cal_samples"]).fillna(0).astype(int)
+    )
+    daily_df["rain_gfs_cal_mm"] = safe_numeric(daily_df["rain_gfs_cal_mm"])
+    daily_df["rain_icon_mm"] = safe_numeric(daily_df["rain_icon_mm"])
+    daily_df["rain_forecast_daily_mm"] = daily_df["rain_gfs_mm"]
+
+    daily_df = daily_df.rename(columns={
+        "rain_gfs_mm": "rain_gfs_24h_mm",
+        "rain_gfs_bc_mm": "rain_gfs_bc_24h_mm",
+        "rain_gfs_cal_mm": "rain_gfs_cal_24h_mm",
+        "rain_icon_mm": "rain_icon_24h_mm"
+    })
+    daily_df["forecast_issue_date"] = DATE
+    daily_df["cycle_utc"] = CYCLE
+    daily_df["forecast_issue_time_utc"] = iso_utc(issue_dt)
+    daily_df["valid_start_utc"] = iso_utc(valid_start)
+    daily_df["valid_end_utc"] = iso_utc(valid_end)
+    daily_df["valid_date"] = valid_date
+    daily_df["imd_observed_mm"] = pd.NA
+    daily_df["observed_status"] = "PENDING"
+    daily_df["error_gfs_raw_mm"] = pd.NA
+    daily_df["abs_error_gfs_raw_mm"] = pd.NA
+    daily_df["pct_error_gfs_raw"] = pd.NA
+    daily_df["updated_at_utc"] = updated_at
+
+    return ensure_columns(daily_df, DAILY_ARCHIVE_COLUMNS)
+
+
+def prepare_3h_archive_rows(distribution_df, unit_type):
+    issue_dt = issue_datetime()
+    updated_at = iso_utc(datetime.utcnow())
+    archive_df = distribution_df.copy()
+
+    if unit_type == "district":
+        archive_df["unit_type"] = "district"
+        archive_df["unit_id"] = archive_df.apply(
+            lambda row: row_key_from_values(row["state"], row["district"]),
+            axis=1
+        )
+        archive_df["unit_name"] = archive_df["district"]
+        archive_df["basin"] = archive_df.get("basin", "")
+        archive_df["sub_basin"] = ""
+        archive_df["area_sqkm"] = pd.NA
+    else:
+        archive_df["state"] = ""
+        archive_df["district"] = ""
+
+    archive_df["from_hour"] = safe_numeric(archive_df["from_hour"]).astype(int)
+    archive_df["to_hour"] = safe_numeric(archive_df["to_hour"]).astype(int)
+    archive_df["forecast_issue_date"] = DATE
+    archive_df["cycle_utc"] = CYCLE
+    archive_df["forecast_issue_time_utc"] = iso_utc(issue_dt)
+    archive_df["valid_start_utc"] = archive_df["from_hour"].apply(
+        lambda hour: iso_utc(issue_dt + timedelta(hours=int(hour)))
+    )
+    archive_df["valid_end_utc"] = archive_df["to_hour"].apply(
+        lambda hour: iso_utc(issue_dt + timedelta(hours=int(hour)))
+    )
+    archive_df["valid_date"] = archive_df["to_hour"].apply(
+        lambda hour: (issue_dt + timedelta(hours=int(hour))).strftime("%Y%m%d")
+    )
+    archive_df["imd_observed_mm"] = pd.NA
+    archive_df["observed_status"] = "SUBDAILY_IMD_UNAVAILABLE"
+    archive_df["error_gfs_raw_mm"] = pd.NA
+    archive_df["abs_error_gfs_raw_mm"] = pd.NA
+    archive_df["pct_error_gfs_raw"] = pd.NA
+    archive_df["updated_at_utc"] = updated_at
+
+    return ensure_columns(archive_df, THREE_H_ARCHIVE_COLUMNS)
+
+
+def update_3h_archive(distribution_df, unit_type, archive_csv):
+    archive_path = os.path.join(OUTPUT_DIR, archive_csv)
+    latest_df = prepare_3h_archive_rows(distribution_df, unit_type)
+
+    if os.path.exists(archive_path):
+        archive_df = pd.read_csv(
+            archive_path,
+            dtype={
+                "forecast_issue_date": str,
+                "cycle_utc": str,
+                "valid_date": str,
+                "unit_id": str
+            }
+        )
+        archive_df = ensure_columns(archive_df, THREE_H_ARCHIVE_COLUMNS)
+    else:
+        archive_df = pd.DataFrame(columns=THREE_H_ARCHIVE_COLUMNS)
+
+    archive_df = pd.concat([archive_df, latest_df], ignore_index=True)
+    archive_df["cycle_utc"] = archive_df["cycle_utc"].astype(str).str.zfill(2)
+    archive_df["forecast_issue_date"] = (
+        archive_df["forecast_issue_date"].astype(str)
+    )
+    archive_df["valid_date"] = archive_df["valid_date"].astype(str)
+    archive_df = archive_df.drop_duplicates(
+        subset=[
+            "unit_type",
+            "unit_id",
+            "forecast_issue_date",
+            "cycle_utc",
+            "from_hour",
+            "to_hour"
+        ],
+        keep="last"
+    )
+    archive_df = archive_df[THREE_H_ARCHIVE_COLUMNS].sort_values(
+        [
+            "forecast_issue_date",
+            "cycle_utc",
+            "unit_type",
+            "unit_name",
+            "unit_id",
+            "from_hour",
+            "to_hour"
+        ]
+    )
+    archive_df.to_csv(archive_path, index=False)
+
+    return archive_df
+
 
 def clean_text(series, fallback=""):
     return series.fillna(fallback).astype(str).replace("nan", fallback)
@@ -987,52 +1267,43 @@ def get_imd_realtime_day_dataset(date_obj):
     return imd_realtime_cache[date_key]
 
 
-def observed_rainfall_by_district(date_yyyymmdd):
+def observed_daily_rain_grid(date_yyyymmdd):
     try:
         date_obj = datetime.strptime(str(date_yyyymmdd), "%Y%m%d")
     except ValueError:
-        return {}, "UNAVAILABLE"
+        return None, "UNAVAILABLE"
 
     if date_obj.date() > last_observed_date:
-        return {}, "PENDING"
+        return None, "PENDING"
 
     if date_obj.year == realtime_imd_year:
         ds_day = get_imd_realtime_day_dataset(date_obj.date())
 
         if ds_day is None:
-            return {}, "PENDING"
+            return None, "PENDING"
 
-        daily_rain = ds_day["rain"].isel(time=0)
-        observed = {}
-
-        for _, row in districts.iterrows():
-            state = row[STATE_COL]
-            district = row[DIST_COL]
-
-            try:
-                clip = daily_rain.rio.clip(
-                    [row.geometry], districts.crs, drop=True
-                )
-                value = float(clip.mean(dim=["lat", "lon"]).values)
-            except Exception:
-                value = float("nan")
-
-            observed[row_key_from_values(state, district)] = value
-
-        return observed, "MATCHED"
+        return ds_day["rain"].isel(time=0), "MATCHED"
 
     ds_year = get_imd_year_dataset(date_obj.year)
 
     if ds_year is None:
-        return {}, "PENDING"
+        return None, "PENDING"
 
     target_time = pd.Timestamp(date_obj.date())
     available_times = pd.to_datetime(ds_year.time.values).normalize()
 
     if target_time not in set(available_times):
-        return {}, "PENDING"
+        return None, "PENDING"
 
-    daily_rain = ds_year["rain"].sel(time=target_time)
+    return ds_year["rain"].sel(time=target_time), "MATCHED"
+
+
+def observed_rainfall_by_district(date_yyyymmdd):
+    daily_rain, status = observed_daily_rain_grid(date_yyyymmdd)
+
+    if status != "MATCHED":
+        return {}, status
+
     observed = {}
 
     for _, row in districts.iterrows():
@@ -1052,10 +1323,38 @@ def observed_rainfall_by_district(date_yyyymmdd):
     return observed, "MATCHED"
 
 
-def add_observed_values(archive_df):
+def observed_rainfall_by_layer(date_yyyymmdd, unit_type):
+    if unit_type == "district":
+        observed, status = observed_rainfall_by_district(date_yyyymmdd)
+
+        return {
+            f"district||{key}": value
+            for key, value in observed.items()
+        }, status
+
+    daily_rain, status = observed_daily_rain_grid(date_yyyymmdd)
+
+    if status != "MATCHED":
+        return {}, status
+
+    unit_gdf = hydrologic_units.get(unit_type)
+
+    if unit_gdf is None:
+        return {}, "UNAVAILABLE"
+
+    means_df = zonal_mean_points(daily_rain, unit_gdf, "imd_observed_mm")
+
+    return {
+        f"{row['unit_type']}||{row['unit_id']}": row["imd_observed_mm"]
+        for row in means_df.to_dict("records")
+    }, "MATCHED"
+
+
+def add_observed_values(archive_df, unit_type):
     if archive_df.empty:
         return archive_df
 
+    archive_df = normalize_daily_archive_identity(archive_df, unit_type)
     archive_df["imd_observed_mm"] = safe_numeric(archive_df["imd_observed_mm"])
     archive_df["rain_forecast_daily_mm"] = safe_numeric(
         archive_df["rain_forecast_daily_mm"]
@@ -1071,7 +1370,7 @@ def add_observed_values(archive_df):
     )
 
     for valid_date in valid_dates:
-        observed, status = observed_rainfall_by_district(valid_date)
+        observed, status = observed_rainfall_by_layer(valid_date, unit_type)
         date_mask = archive_df["valid_date"].astype(str) == valid_date
         missing_date_mask = date_mask & archive_df["imd_observed_mm"].isna()
 
@@ -1080,7 +1379,7 @@ def add_observed_values(archive_df):
             continue
 
         for index, row in archive_df.loc[missing_date_mask].iterrows():
-            key = row_key_from_values(row["state"], row["district"])
+            key = archive_row_key(row)
             value = observed.get(key, float("nan"))
 
             if pd.notna(value):
@@ -1113,89 +1412,14 @@ def add_observed_values(archive_df):
     return archive_df
 
 
-def update_daily_verification_archive(latest_df):
-    archive_path = os.path.join(OUTPUT_DIR, DAILY_VERIFICATION_CSV)
-    issue_dt = datetime.strptime(f"{DATE}{CYCLE}", "%Y%m%d%H")
-    valid_start = issue_dt
-    valid_end = issue_dt + timedelta(hours=24)
-    valid_date = valid_end.strftime("%Y%m%d")
-    updated_at = iso_utc(datetime.utcnow())
-
-    daily_df = latest_df[
-        [
-            "state",
-            "district",
-            "rain_gfs_mm",
-            "bias_factor",
-            "rain_gfs_bc_mm",
-            "gfs_cal_factor",
-            "gfs_cal_threshold_mm",
-            "gfs_cal_samples",
-            "rain_gfs_cal_mm",
-            "rain_icon_mm"
-        ]
-    ].copy()
-
-    daily_df["rain_gfs_mm"] = safe_numeric(daily_df["rain_gfs_mm"])
-    daily_df["rain_gfs_bc_mm"] = safe_numeric(daily_df["rain_gfs_bc_mm"])
-    daily_df["gfs_cal_factor"] = safe_numeric(daily_df["gfs_cal_factor"])
-    daily_df["gfs_cal_threshold_mm"] = safe_numeric(
-        daily_df["gfs_cal_threshold_mm"]
-    )
-    daily_df["gfs_cal_samples"] = (
-        safe_numeric(daily_df["gfs_cal_samples"]).fillna(0).astype(int)
-    )
-    daily_df["rain_gfs_cal_mm"] = safe_numeric(daily_df["rain_gfs_cal_mm"])
-    daily_df["rain_icon_mm"] = safe_numeric(daily_df["rain_icon_mm"])
-    daily_df["rain_forecast_daily_mm"] = daily_df["rain_gfs_mm"]
-
-    daily_df = daily_df.rename(columns={
-        "rain_gfs_mm": "rain_gfs_24h_mm",
-        "rain_gfs_bc_mm": "rain_gfs_bc_24h_mm",
-        "rain_gfs_cal_mm": "rain_gfs_cal_24h_mm",
-        "rain_icon_mm": "rain_icon_24h_mm"
-    })
-
-    daily_df["forecast_issue_date"] = DATE
-    daily_df["cycle_utc"] = CYCLE
-    daily_df["forecast_issue_time_utc"] = iso_utc(issue_dt)
-    daily_df["valid_start_utc"] = iso_utc(valid_start)
-    daily_df["valid_end_utc"] = iso_utc(valid_end)
-    daily_df["valid_date"] = valid_date
-    daily_df["imd_observed_mm"] = pd.NA
-    daily_df["observed_status"] = "PENDING"
-    daily_df["error_gfs_raw_mm"] = pd.NA
-    daily_df["abs_error_gfs_raw_mm"] = pd.NA
-    daily_df["pct_error_gfs_raw"] = pd.NA
-    daily_df["updated_at_utc"] = updated_at
-
-    columns = [
-        "state",
-        "district",
-        "forecast_issue_date",
-        "cycle_utc",
-        "forecast_issue_time_utc",
-        "valid_start_utc",
-        "valid_end_utc",
-        "valid_date",
-        "rain_forecast_daily_mm",
-        "rain_gfs_24h_mm",
-        "bias_factor",
-        "rain_gfs_bc_24h_mm",
-        "gfs_cal_factor",
-        "gfs_cal_threshold_mm",
-        "gfs_cal_samples",
-        "rain_gfs_cal_24h_mm",
-        "rain_icon_24h_mm",
-        "imd_observed_mm",
-        "observed_status",
-        "error_gfs_raw_mm",
-        "abs_error_gfs_raw_mm",
-        "pct_error_gfs_raw",
-        "updated_at_utc"
-    ]
-
-    daily_df = daily_df[columns]
+def update_daily_verification_archive(
+    latest_df,
+    unit_type,
+    archive_csv,
+    mirror_csv=None
+):
+    archive_path = os.path.join(OUTPUT_DIR, archive_csv)
+    daily_df = prepare_daily_archive_rows(latest_df, unit_type)
 
     if os.path.exists(archive_path):
         archive_df = pd.read_csv(
@@ -1203,26 +1427,23 @@ def update_daily_verification_archive(latest_df):
             dtype={
                 "forecast_issue_date": str,
                 "cycle_utc": str,
-                "valid_date": str
+                "valid_date": str,
+                "unit_id": str
             }
         )
     else:
-        archive_df = pd.DataFrame(columns=columns)
+        archive_df = pd.DataFrame(columns=DAILY_ARCHIVE_COLUMNS)
 
     archive_df = pd.concat([archive_df, daily_df], ignore_index=True)
-    archive_df["cycle_utc"] = archive_df["cycle_utc"].astype(str).str.zfill(2)
-    archive_df["forecast_issue_date"] = archive_df[
-        "forecast_issue_date"
-    ].astype(str)
-    archive_df["valid_date"] = archive_df["valid_date"].astype(str)
+    archive_df = normalize_daily_archive_identity(archive_df, unit_type)
     archive_df["rain_forecast_daily_mm"] = (
         safe_numeric(archive_df["rain_gfs_24h_mm"])
         .fillna(safe_numeric(archive_df["rain_forecast_daily_mm"]))
     )
     archive_df = archive_df.drop_duplicates(
         subset=[
-            "state",
-            "district",
+            "unit_type",
+            "unit_id",
             "forecast_issue_date",
             "cycle_utc",
             "valid_date"
@@ -1230,11 +1451,21 @@ def update_daily_verification_archive(latest_df):
         keep="last"
     )
 
-    archive_df = add_observed_values(archive_df)
-    archive_df = archive_df[columns].sort_values(
-        ["valid_date", "state", "district", "forecast_issue_date", "cycle_utc"]
+    archive_df = add_observed_values(archive_df, unit_type)
+    archive_df = archive_df[DAILY_ARCHIVE_COLUMNS].sort_values(
+        [
+            "valid_date",
+            "unit_type",
+            "unit_name",
+            "unit_id",
+            "forecast_issue_date",
+            "cycle_utc"
+        ]
     )
     archive_df.to_csv(archive_path, index=False)
+
+    if mirror_csv:
+        archive_df.to_csv(os.path.join(OUTPUT_DIR, mirror_csv), index=False)
 
     return archive_df
 
@@ -1487,7 +1718,6 @@ distribution_df = distribution_df[
     ]
 ]
 
-daily_verification_df = update_daily_verification_archive(final_df)
 hydrologic_outputs = {}
 
 for unit_key in hydrologic_units:
@@ -1503,6 +1733,34 @@ for unit_key in hydrologic_units:
         "final": final_h,
         "distribution": distribution_h
     }
+
+daily_verification_outputs = {
+    "district": update_daily_verification_archive(
+        final_df,
+        "district",
+        DAILY_VERIFICATION_CSV,
+        mirror_csv=DISTRICT_DAILY_VERIFICATION_ALIAS_CSV
+    )
+}
+three_hour_archive_outputs = {
+    "district": update_3h_archive(
+        distribution_df,
+        "district",
+        DISTRICT_3H_ARCHIVE_CSV
+    )
+}
+
+for unit_key, output in hydrologic_outputs.items():
+    daily_verification_outputs[unit_key] = update_daily_verification_archive(
+        output["final"],
+        unit_key,
+        DAILY_ARCHIVE_FILES[unit_key]
+    )
+    three_hour_archive_outputs[unit_key] = update_3h_archive(
+        output["distribution"],
+        unit_key,
+        THREE_H_ARCHIVE_FILES[unit_key]
+    )
 
 # ------------------------------------------------------------------
 # STEP 6: SAVE OUTPUTS
@@ -1546,7 +1804,20 @@ print("FINAL SAFE GFS + ICON PIPELINE COMPLETED")
 print(f"Total districts : {final_df.shape[0]}")
 print(f"Alert districts : {alert_df.shape[0]}")
 print(f"3-hour records : {distribution_df.shape[0]}")
-print(f"Daily verification records : {daily_verification_df.shape[0]}")
+print(
+    "Daily verification records : " +
+    ", ".join(
+        f"{key}={df.shape[0]}"
+        for key, df in daily_verification_outputs.items()
+    )
+)
+print(
+    "3-hour archive records : " +
+    ", ".join(
+        f"{key}={df.shape[0]}"
+        for key, df in three_hour_archive_outputs.items()
+    )
+)
 for unit_key, output in hydrologic_outputs.items():
     print(
         f"{unit_key.title()} units : {output['final'].shape[0]} | "

@@ -468,6 +468,7 @@ button:disabled {
                 <div class="distribution-actions">
                     <button type="button" id="downloadDistrictDistribution" disabled>Download district CSV</button>
                     <button type="button" id="downloadAllDistribution" disabled>Download all CSV</button>
+                    <button type="button" id="download3hArchive" disabled>Download 3h archive</button>
                 </div>
             </div>
 
@@ -516,6 +517,11 @@ button:disabled {
 const DATA_CSV = "India_24h_GFS_IMD_ICON_Rainfall.csv";
 const DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Rainfall.csv";
 const VERIFICATION_CSV = "India_Daily_GFS_IMD_Rainfall_Verification.csv";
+const SUBBASIN_VERIFICATION_CSV = "India_Daily_GFS_IMD_Subbasin_Verification.csv";
+const WATERSHED_VERIFICATION_CSV = "India_Daily_GFS_IMD_Watershed_Verification.csv";
+const DISTRICT_3H_ARCHIVE_CSV = "India_3h_GFS_District_Archive.csv";
+const SUBBASIN_3H_ARCHIVE_CSV = "India_3h_GFS_Subbasin_Archive.csv";
+const WATERSHED_3H_ARCHIVE_CSV = "India_3h_GFS_Watershed_Archive.csv";
 const BASIN_CSV = "district_basin_mapping.csv";
 const DISTRICTS_GEOJSON = "india_districts.geojson";
 const SUBBASIN_DATA_CSV = "India_24h_GFS_IMD_ICON_Subbasin_Rainfall.csv";
@@ -641,6 +647,7 @@ const elements = {
     distributionChart: document.getElementById("distributionChart"),
     downloadDistrictDistribution: document.getElementById("downloadDistrictDistribution"),
     downloadAllDistribution: document.getElementById("downloadAllDistribution"),
+    download3hArchive: document.getElementById("download3hArchive"),
     verificationNote: document.getElementById("verificationNote"),
     verificationSummary: document.getElementById("verificationSummary"),
     verificationPeriodBox: document.getElementById("verificationPeriodBox"),
@@ -1095,32 +1102,45 @@ function buildDistributionMap(rows) {
     }, {});
 }
 
-function enrichVerificationRows(rows) {
+function enrichVerificationRows(rows, layer = "district") {
     return rows
-        .filter(row => row.district && row.state)
-        .map(row => ({
-            ...row,
-            unit_type: "district",
-            unit_id: `${row.state || ""}||${row.district || ""}`,
-            unit_name: row.district || "",
-            forecast_issue_date: String(row.forecast_issue_date || ""),
-            cycle_utc: String(row.cycle_utc || "").padStart(2, "0"),
-            valid_date: String(row.valid_date || ""),
-            rain_forecast_daily_mm: toOptionalNumber(row.rain_forecast_daily_mm),
-            rain_gfs_24h_mm: toOptionalNumber(row.rain_gfs_24h_mm),
-            bias_factor: toOptionalNumber(row.bias_factor),
-            rain_gfs_bc_24h_mm: toOptionalNumber(row.rain_gfs_bc_24h_mm),
-            gfs_cal_factor: toOptionalNumber(row.gfs_cal_factor),
-            gfs_cal_threshold_mm: toOptionalNumber(row.gfs_cal_threshold_mm),
-            gfs_cal_samples: toOptionalNumber(row.gfs_cal_samples),
-            rain_gfs_cal_24h_mm: toOptionalNumber(row.rain_gfs_cal_24h_mm),
-            rain_icon_24h_mm: toOptionalNumber(row.rain_icon_24h_mm),
-            imd_observed_mm: toOptionalNumber(row.imd_observed_mm),
-            error_gfs_raw_mm: toOptionalNumber(row.error_gfs_raw_mm ?? row.error_gfs_bc_mm),
-            abs_error_gfs_raw_mm: toOptionalNumber(row.abs_error_gfs_raw_mm ?? row.abs_error_gfs_bc_mm),
-            pct_error_gfs_raw: toOptionalNumber(row.pct_error_gfs_raw ?? row.pct_error_gfs_bc),
-            observed_status: row.observed_status || "PENDING"
-        }))
+        .filter(row => (layer === "district" ? row.district && row.state : row.unit_id))
+        .map(row => {
+            const unitType = layer === "district" ? "district" : row.unit_type || layer;
+            const unitId = layer === "district"
+                ? row.unit_id || `${row.state || ""}||${row.district || ""}`
+                : row.unit_id || "";
+            const unitName = layer === "district"
+                ? row.unit_name || row.district || ""
+                : row.unit_name || row.unit_id || "";
+
+            return {
+                ...row,
+                unit_type: unitType,
+                unit_id: unitId,
+                unit_name: unitName,
+                basin: row.basin || "",
+                sub_basin: row.sub_basin || "",
+                area_sqkm: row.area_sqkm === "" ? "" : toOptionalNumber(row.area_sqkm),
+                forecast_issue_date: String(row.forecast_issue_date || ""),
+                cycle_utc: String(row.cycle_utc || "").padStart(2, "0"),
+                valid_date: String(row.valid_date || ""),
+                rain_forecast_daily_mm: toOptionalNumber(row.rain_forecast_daily_mm),
+                rain_gfs_24h_mm: toOptionalNumber(row.rain_gfs_24h_mm),
+                bias_factor: toOptionalNumber(row.bias_factor),
+                rain_gfs_bc_24h_mm: toOptionalNumber(row.rain_gfs_bc_24h_mm),
+                gfs_cal_factor: toOptionalNumber(row.gfs_cal_factor),
+                gfs_cal_threshold_mm: toOptionalNumber(row.gfs_cal_threshold_mm),
+                gfs_cal_samples: toOptionalNumber(row.gfs_cal_samples),
+                rain_gfs_cal_24h_mm: toOptionalNumber(row.rain_gfs_cal_24h_mm),
+                rain_icon_24h_mm: toOptionalNumber(row.rain_icon_24h_mm),
+                imd_observed_mm: toOptionalNumber(row.imd_observed_mm),
+                error_gfs_raw_mm: toOptionalNumber(row.error_gfs_raw_mm ?? row.error_gfs_bc_mm),
+                abs_error_gfs_raw_mm: toOptionalNumber(row.abs_error_gfs_raw_mm ?? row.abs_error_gfs_bc_mm),
+                pct_error_gfs_raw: toOptionalNumber(row.pct_error_gfs_raw ?? row.pct_error_gfs_bc),
+                observed_status: row.observed_status || "PENDING"
+            };
+        })
         .sort((a, b) => (
             rowKey(a).localeCompare(rowKey(b)) ||
             a.valid_date.localeCompare(b.valid_date) ||
@@ -1628,26 +1648,15 @@ function renderDistribution(row) {
 
 function renderVerification(row) {
     const hasArchive = verificationData.length > 0;
-    elements.downloadAllVerification.disabled = !hasArchive || activeLayer !== "district";
-
-    if (activeLayer !== "district") {
-        elements.verificationSummary.textContent =
-            "Daily IMD verification is currently available for the district layer.";
-        elements.verificationNote.textContent = "district only";
-        elements.downloadDistrictVerification.disabled = true;
-        setVerificationMetrics();
-        elements.verificationChart.innerHTML =
-            `<div class="chart-empty">Switch to Districts to view IMD observed rainfall verification.</div>`;
-        return;
-    }
+    elements.downloadAllVerification.disabled = !hasArchive;
 
     if (!row) {
-        elements.verificationSummary.textContent = "No district selected.";
+        elements.verificationSummary.textContent = `No ${layerConfigs[activeLayer].singular} selected.`;
         elements.verificationNote.textContent = "";
         elements.downloadDistrictVerification.disabled = true;
         setVerificationMetrics();
         elements.verificationChart.innerHTML =
-            `<div class="chart-empty">Select a district to view daily forecast verification.</div>`;
+            `<div class="chart-empty">Select a ${layerConfigs[activeLayer].singular} to view daily forecast verification.</div>`;
         return;
     }
 
@@ -1658,7 +1667,7 @@ function renderVerification(row) {
     const dailyRecordCount = latestDailyVerificationRecords(records).length;
 
     elements.verificationSummary.textContent =
-        `${row.district}, ${row.state} | Raw GFS forecast compared with IMD observed rainfall when available`;
+        `${displayName(row)}${displayContext(row) ? `, ${displayContext(row)}` : ""} | Raw GFS forecast compared with IMD observed rainfall when available`;
     elements.verificationNote.textContent = records.length
         ? `${dailyRecordCount} daily dates | ${records.length} archived cycles`
         : "pending";
@@ -1852,6 +1861,12 @@ const distributionCsvHeaders = [
 ];
 
 const verificationCsvHeaders = [
+    "unit_type",
+    "unit_id",
+    "unit_name",
+    "basin",
+    "sub_basin",
+    "area_sqkm",
     "state",
     "district",
     "forecast_issue_date",
@@ -1927,12 +1942,29 @@ function downloadSelectedVerification() {
     }
 
     const records = verificationMap[selectedDistrictKey] || [];
-    const district = records[0]?.district || selectedDistrictKey.split("||")[1];
-    downloadCsv(`${safeFilename(district)}_daily_forecast_imd_verification.csv`, records, verificationCsvHeaders);
+    const name = records[0] ? displayName(records[0]) : selectedDistrictKey.split("||").pop();
+    downloadCsv(`${safeFilename(name)}_daily_forecast_imd_verification.csv`, records, verificationCsvHeaders);
 }
 
 function downloadAllVerification() {
-    downloadCsv("india_daily_forecast_imd_verification.csv", verificationData, verificationCsvHeaders);
+    downloadCsv(`india_${activeLayer}_daily_forecast_imd_verification.csv`, verificationData, verificationCsvHeaders);
+}
+
+function downloadArchiveFile(filename) {
+    if (!filename) {
+        return;
+    }
+
+    const link = document.createElement("a");
+    link.href = freshUrl(filename);
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+}
+
+function download3hArchive() {
+    downloadArchiveFile(datasets[activeLayer]?.archive3hCsv);
 }
 
 function setActiveLayer(layer) {
@@ -1945,13 +1977,20 @@ function setActiveLayer(layer) {
     geojsonData = dataset.geojson;
     forecastData = dataset.forecast;
     distributionData = dataset.distribution;
+    verificationData = dataset.verification || [];
     rainfallMap = Object.fromEntries(forecastData.map(row => [rowKey(row), row]));
     distributionMap = buildDistributionMap(distributionData);
+    verificationMap = buildVerificationMap(verificationData);
     selectedDistrictKey = null;
 
     elements.layerBox.value = layer;
     elements.searchBox.placeholder = `Search ${layerConfigs[layer].singular}, ID, or basin`;
     elements.filterBox.options[0].textContent = `All ${layerConfigs[layer].label.toLowerCase()}`;
+    elements.downloadDistrictDistribution.textContent = `Download selected ${layerConfigs[layer].singular} CSV`;
+    elements.downloadAllDistribution.textContent = `Download all ${layerConfigs[layer].label.toLowerCase()} CSV`;
+    elements.downloadDistrictVerification.textContent = `Download selected ${layerConfigs[layer].singular} CSV`;
+    elements.downloadAllVerification.textContent = `Download all ${layerConfigs[layer].label.toLowerCase()} CSV`;
+    elements.download3hArchive.disabled = !dataset.archive3hCsv;
     buildTableHead();
     populateBasinOptions();
     applyFilters();
@@ -1976,6 +2015,7 @@ function bindEvents() {
     });
     elements.downloadDistrictDistribution.addEventListener("click", downloadSelectedDistribution);
     elements.downloadAllDistribution.addEventListener("click", downloadAllDistribution);
+    elements.download3hArchive.addEventListener("click", download3hArchive);
     elements.verificationPeriodBox.addEventListener("change", () => {
         const selectedRow = forecastData.find(item => rowKey(item) === selectedDistrictKey);
         renderVerification(selectedRow || null);
@@ -1994,9 +2034,11 @@ async function init() {
             districts,
             subbasinRows,
             subbasinDistributionRows,
+            subbasinVerificationRows,
             subbasins,
             watershedRows,
             watershedDistributionRows,
+            watershedVerificationRows,
             watersheds
         ] = await Promise.all([
             fetchCsv(BASIN_CSV),
@@ -2006,9 +2048,11 @@ async function init() {
             fetchJson(DISTRICTS_GEOJSON),
             fetchOptionalCsv(SUBBASIN_DATA_CSV),
             fetchOptionalCsv(SUBBASIN_DISTRIBUTION_CSV),
+            fetchOptionalCsv(SUBBASIN_VERIFICATION_CSV),
             fetchOptionalJson(SUBBASINS_GEOJSON),
             fetchOptionalCsv(WATERSHED_DATA_CSV),
             fetchOptionalCsv(WATERSHED_DISTRIBUTION_CSV),
+            fetchOptionalCsv(WATERSHED_VERIFICATION_CSV),
             fetchOptionalJson(WATERSHEDS_GEOJSON)
         ]);
 
@@ -2022,7 +2066,9 @@ async function init() {
             district: {
                 geojson: districts,
                 forecast: enrichForecastRows(rainfallRows, "district"),
-                distribution: enrichDistributionRows(distributionRows, "district")
+                distribution: enrichDistributionRows(distributionRows, "district"),
+                verification: enrichVerificationRows(verificationRows, "district"),
+                archive3hCsv: DISTRICT_3H_ARCHIVE_CSV
             }
         };
 
@@ -2030,7 +2076,9 @@ async function init() {
             datasets.subbasin = {
                 geojson: subbasins,
                 forecast: enrichForecastRows(subbasinRows, "subbasin"),
-                distribution: enrichDistributionRows(subbasinDistributionRows, "subbasin")
+                distribution: enrichDistributionRows(subbasinDistributionRows, "subbasin"),
+                verification: enrichVerificationRows(subbasinVerificationRows, "subbasin"),
+                archive3hCsv: SUBBASIN_3H_ARCHIVE_CSV
             };
         }
 
@@ -2038,12 +2086,11 @@ async function init() {
             datasets.watershed = {
                 geojson: watersheds,
                 forecast: enrichForecastRows(watershedRows, "watershed"),
-                distribution: enrichDistributionRows(watershedDistributionRows, "watershed")
+                distribution: enrichDistributionRows(watershedDistributionRows, "watershed"),
+                verification: enrichVerificationRows(watershedVerificationRows, "watershed"),
+                archive3hCsv: WATERSHED_3H_ARCHIVE_CSV
             };
         }
-
-        verificationData = enrichVerificationRows(verificationRows);
-        verificationMap = buildVerificationMap(verificationData);
 
         Array.from(elements.layerBox.options).forEach(option => {
             option.disabled = !datasets[option.value];
