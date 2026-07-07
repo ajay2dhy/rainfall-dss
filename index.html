@@ -1967,17 +1967,38 @@ function downloadAllVerification() {
     downloadCsv(`india_${activeLayer}_daily_forecast_imd_verification.csv`, verificationData, verificationCsvHeaders);
 }
 
-function downloadArchiveFile(filename) {
+async function downloadArchiveFile(filename) {
     if (!filename) {
         return;
     }
 
-    const link = document.createElement("a");
-    link.href = rawAssetUrl(filename);
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
+    elements.download3hArchive.disabled = true;
+    const originalText = elements.download3hArchive.textContent;
+    elements.download3hArchive.textContent = "Preparing download...";
+
+    try {
+        const response = await fetch(rawAssetUrl(filename), { cache: "no-store" });
+
+        if (!response.ok) {
+            throw new Error(`${filename} returned ${response.status}`);
+        }
+
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        console.error(error);
+        window.alert(`Unable to download ${filename}. Please try again after the latest GitHub Pages build finishes.`);
+    } finally {
+        elements.download3hArchive.textContent = originalText;
+        elements.download3hArchive.disabled = !datasets[activeLayer]?.archive3hCsv;
+    }
 }
 
 function download3hArchive() {
