@@ -44,6 +44,9 @@ ICON_DIR = "ICON_TMP"
 # OUTPUT_DIR = "FINAL_OUTPUT"
 OUTPUT_DIR = "."
 DAILY_VERIFICATION_CSV = "India_Daily_GFS_IMD_Rainfall_Verification.csv"
+CALIBRATION_THRESHOLD_MM = 12.0
+CALIBRATION_FACTOR_MIN = 0.25
+CALIBRATION_FACTOR_MAX = 4.0
 
 os.makedirs(IMD_DIR, exist_ok=True)
 os.makedirs(IMD_REALTIME_DIR, exist_ok=True)
@@ -433,6 +436,156 @@ def iso_utc(dt):
 
 def safe_numeric(series):
     return pd.to_numeric(series, errors="coerce")
+
+
+def empty_calibration_factors():
+    return pd.DataFrame(
+        columns=[
+            "state",
+            "district",
+            "gfs_cal_factor",
+            "gfs_cal_threshold_mm",
+            "gfs_cal_samples"
+        ]
+    )
+
+
+def district_calibration_factors(threshold_mm=CALIBRATION_THRESHOLD_MM):
+    archive_path = os.path.join(OUTPUT_DIR, DAILY_VERIFICATION_CSV)
+
+    if not os.path.exists(archive_path):
+        return empty_calibration_factors()
+
+    try:
+        archive_df = pd.read_csv(
+            archive_path,
+            dtype={
+                "state": str,
+                "district": str,
+                "forecast_issue_date": str,
+                "cycle_utc": str,
+                "valid_date": str
+            }
+        )
+    except Exception as exc:
+        print(f"Skipping calibrated GFS factors: {exc}")
+        return empty_calibration_factors()
+
+    required = {"state", "district", "imd_observed_mm"}
+    if not required.issubset(archive_df.columns):
+        return empty_calibration_factors()
+
+    if "rain_gfs_24h_mm" in archive_df.columns:
+        forecast_numeric = safe_numeric(archive_df["rain_gfs_24h_mm"])
+    elif "rain_forecast_daily_mm" in archive_df.columns:
+        forecast_numeric = safe_numeric(archive_df["rain_forecast_daily_mm"])
+    else:
+        return empty_calibration_factors()
+
+    observed_numeric = safe_numeric(archive_df["imd_observed_mm"])
+    observed_status = (
+        archive_df["observed_status"]
+        if "observed_status" in archive_df.columns
+        else pd.Series("MATCHED", index=archive_df.index)
+    )
+    matched_mask = observed_status.astype(str).str.upper().eq("MATCHED")
+    calibration_mask = (
+        matched_mask &
+        forecast_numeric.notna() &
+        observed_numeric.notna() &
+        (forecast_numeric > threshold_mm)
+    )
+
+    if not calibration_mask.any():
+        return empty_calibration_factors()
+
+    calibration_df = archive_df.loc[
+        calibration_mask,
+        ["state", "district"]
+    ].copy()
+    calibration_df["forecast"] = forecast_numeric.loc[calibration_mask]
+    calibration_df["observed"] = observed_numeric.loc[calibration_mask]
+
+    grouped = (
+        calibration_df
+        .groupby(["state", "district"], as_index=False)
+        .agg(
+            forecast_sum=("forecast", "sum"),
+            observed_sum=("observed", "sum"),
+            gfs_cal_samples=("forecast", "size")
+        )
+    )
+    grouped = grouped[grouped["forecast_sum"] > 0].copy()
+
+    if grouped.empty:
+        return empty_calibration_factors()
+
+    grouped["gfs_cal_factor"] = (
+        grouped["observed_sum"] / grouped["forecast_sum"]
+    ).replace([np.inf, -np.inf], np.nan).fillna(1.0)
+    grouped["gfs_cal_factor"] = grouped["gfs_cal_factor"].clip(
+        CALIBRATION_FACTOR_MIN,
+        CALIBRATION_FACTOR_MAX
+    )
+    grouped["gfs_cal_threshold_mm"] = threshold_mm
+
+    return grouped[
+        [
+            "state",
+            "district",
+            "gfs_cal_factor",
+            "gfs_cal_threshold_mm",
+            "gfs_cal_samples"
+        ]
+    ]
+
+
+def apply_district_calibration(latest_df):
+    calibrated_df = latest_df.copy()
+    factors_df = district_calibration_factors()
+
+    if factors_df.empty:
+        calibrated_df["gfs_cal_factor"] = 1.0
+        calibrated_df["gfs_cal_threshold_mm"] = CALIBRATION_THRESHOLD_MM
+        calibrated_df["gfs_cal_samples"] = 0
+    else:
+        calibrated_df = calibrated_df.merge(
+            factors_df,
+            on=["state", "district"],
+            how="left"
+        )
+        calibrated_df["gfs_cal_factor"] = safe_numeric(
+            calibrated_df["gfs_cal_factor"]
+        ).fillna(1.0)
+        calibrated_df["gfs_cal_threshold_mm"] = safe_numeric(
+            calibrated_df["gfs_cal_threshold_mm"]
+        ).fillna(CALIBRATION_THRESHOLD_MM)
+        calibrated_df["gfs_cal_samples"] = safe_numeric(
+            calibrated_df["gfs_cal_samples"]
+        ).fillna(0).astype(int)
+
+    raw_forecast = safe_numeric(calibrated_df["rain_gfs_mm"]).fillna(0.0)
+    use_calibration = (
+        (raw_forecast > CALIBRATION_THRESHOLD_MM) &
+        (calibrated_df["gfs_cal_samples"] > 0)
+    )
+
+    calibrated_df["rain_gfs_cal_mm"] = raw_forecast
+    calibrated_df.loc[use_calibration, "rain_gfs_cal_mm"] = (
+        raw_forecast.loc[use_calibration] *
+        calibrated_df.loc[use_calibration, "gfs_cal_factor"]
+    )
+    calibrated_df["alert_gfs_cal"] = (
+        calibrated_df["rain_gfs_cal_mm"].apply(imd_alert)
+    )
+
+    print(
+        "Paper-style GFS calibration: "
+        f"{int(use_calibration.sum())} districts adjusted "
+        f"(threshold > {CALIBRATION_THRESHOLD_MM:g} mm/day)."
+    )
+
+    return calibrated_df
 
 
 UNIT_COLUMNS = [
@@ -975,18 +1128,31 @@ def update_daily_verification_archive(latest_df):
             "rain_gfs_mm",
             "bias_factor",
             "rain_gfs_bc_mm",
+            "gfs_cal_factor",
+            "gfs_cal_threshold_mm",
+            "gfs_cal_samples",
+            "rain_gfs_cal_mm",
             "rain_icon_mm"
         ]
     ].copy()
 
     daily_df["rain_gfs_mm"] = safe_numeric(daily_df["rain_gfs_mm"])
     daily_df["rain_gfs_bc_mm"] = safe_numeric(daily_df["rain_gfs_bc_mm"])
+    daily_df["gfs_cal_factor"] = safe_numeric(daily_df["gfs_cal_factor"])
+    daily_df["gfs_cal_threshold_mm"] = safe_numeric(
+        daily_df["gfs_cal_threshold_mm"]
+    )
+    daily_df["gfs_cal_samples"] = (
+        safe_numeric(daily_df["gfs_cal_samples"]).fillna(0).astype(int)
+    )
+    daily_df["rain_gfs_cal_mm"] = safe_numeric(daily_df["rain_gfs_cal_mm"])
     daily_df["rain_icon_mm"] = safe_numeric(daily_df["rain_icon_mm"])
     daily_df["rain_forecast_daily_mm"] = daily_df["rain_gfs_mm"]
 
     daily_df = daily_df.rename(columns={
         "rain_gfs_mm": "rain_gfs_24h_mm",
         "rain_gfs_bc_mm": "rain_gfs_bc_24h_mm",
+        "rain_gfs_cal_mm": "rain_gfs_cal_24h_mm",
         "rain_icon_mm": "rain_icon_24h_mm"
     })
 
@@ -1016,6 +1182,10 @@ def update_daily_verification_archive(latest_df):
         "rain_gfs_24h_mm",
         "bias_factor",
         "rain_gfs_bc_24h_mm",
+        "gfs_cal_factor",
+        "gfs_cal_threshold_mm",
+        "gfs_cal_samples",
+        "rain_gfs_cal_24h_mm",
         "rain_icon_24h_mm",
         "imd_observed_mm",
         "observed_status",
@@ -1268,8 +1438,10 @@ final_df["rain_icon_mm"] = pd.to_numeric(
     final_df["rain_icon_mm"],
     errors="coerce"
 ).fillna(0.0)
+final_df["alert_gfs_raw"] = final_df["rain_gfs_mm"].apply(imd_alert)
 final_df["alert_gfs_bc"] = final_df["rain_gfs_bc_mm"].apply(imd_alert)
 final_df["alert_icon"] = final_df["rain_icon_mm"].apply(imd_alert)
+final_df = apply_district_calibration(final_df)
 
 final_df["date"] = DATE
 final_df["cycle_utc"] = CYCLE
@@ -1342,6 +1514,8 @@ final_df.to_csv(
 )
 
 alert_df = final_df[
+    (final_df["alert_gfs_raw"] != "NO ALERT") |
+    (final_df["alert_gfs_cal"] != "NO ALERT") |
     (final_df["alert_gfs_bc"] != "NO ALERT") |
     (final_df["alert_icon"] != "NO ALERT")
 ]

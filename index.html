@@ -334,7 +334,7 @@ tbody tr.selected-row {
 
 .verification-stats {
     display: grid;
-    grid-template-columns: repeat(4, minmax(90px, 1fr));
+    grid-template-columns: repeat(5, minmax(90px, 1fr));
     gap: 8px;
     margin-bottom: 10px;
 }
@@ -487,8 +487,14 @@ button:disabled {
                 <div class="verification-stats">
                     <div class="verification-stat"><span>Matched periods</span><strong id="verificationMatched">0</strong></div>
                     <div class="verification-stat"><span>R2</span><strong id="verificationR2">-</strong></div>
-                    <div class="verification-stat"><span>Bias</span><strong id="verificationBias">-</strong></div>
+                    <div class="verification-stat"><span>CC</span><strong id="verificationCc">-</strong></div>
+                    <div class="verification-stat"><span>ME</span><strong id="verificationBias">-</strong></div>
+                    <div class="verification-stat"><span>Relative bias</span><strong id="verificationRelBias">-</strong></div>
                     <div class="verification-stat"><span>RMSE</span><strong id="verificationRmse">-</strong></div>
+                    <div class="verification-stat"><span>POD</span><strong id="verificationPod">-</strong></div>
+                    <div class="verification-stat"><span>FAR</span><strong id="verificationFar">-</strong></div>
+                    <div class="verification-stat"><span>CSI</span><strong id="verificationCsi">-</strong></div>
+                    <div class="verification-stat"><span>TSS</span><strong id="verificationTss">-</strong></div>
                 </div>
                 <div class="chart-box comparison-chart-box">
                     <div id="verificationChart" class="chart-surface"></div>
@@ -521,6 +527,7 @@ const WATERSHEDS_GEOJSON = "watersheds.geojson";
 const DATA_CACHE_BUSTER = Date.now().toString();
 const FORECAST_TIME_ZONE = "Asia/Kolkata";
 const HOURS_TO_MS = 60 * 60 * 1000;
+const RAIN_EVENT_THRESHOLD_MM = 1.0;
 
 const layerConfigs = {
     district: {
@@ -563,8 +570,12 @@ const districtColumns = [
     { key: "imd_mean_mm", label: "IMD mean mm", numeric: true },
     { key: "bias_factor", label: "Bias factor", numeric: true },
     { key: "rain_gfs_bc_mm", label: "Bias-corrected mm", numeric: true },
+    { key: "gfs_cal_factor", label: "Paper factor", numeric: true },
+    { key: "gfs_cal_samples", label: "Cal samples", numeric: true },
+    { key: "rain_gfs_cal_mm", label: "Paper-calibrated mm", numeric: true },
     { key: "rain_icon_mm", label: "ICON mm", numeric: true },
     { key: "alert_gfs_raw", label: "Raw GFS alert", alert: true },
+    { key: "alert_gfs_cal", label: "Cal alert", alert: true },
     { key: "alert_gfs_bc", label: "BC alert", alert: true },
     { key: "alert_icon", label: "ICON alert", alert: true }
 ];
@@ -635,8 +646,14 @@ const elements = {
     verificationPeriodBox: document.getElementById("verificationPeriodBox"),
     verificationMatched: document.getElementById("verificationMatched"),
     verificationR2: document.getElementById("verificationR2"),
+    verificationCc: document.getElementById("verificationCc"),
     verificationBias: document.getElementById("verificationBias"),
+    verificationRelBias: document.getElementById("verificationRelBias"),
     verificationRmse: document.getElementById("verificationRmse"),
+    verificationPod: document.getElementById("verificationPod"),
+    verificationFar: document.getElementById("verificationFar"),
+    verificationCsi: document.getElementById("verificationCsi"),
+    verificationTss: document.getElementById("verificationTss"),
     verificationChart: document.getElementById("verificationChart"),
     downloadDistrictVerification: document.getElementById("downloadDistrictVerification"),
     downloadAllVerification: document.getElementById("downloadAllVerification"),
@@ -988,6 +1005,15 @@ function enrichForecastRows(rows, layer = "district") {
                 : row.unit_name || row.unit_id || "";
 
             const rawGfsRain = toNumber(row.rain_gfs_mm);
+            const calibratedGfsRain = row.rain_gfs_cal_mm === "" || row.rain_gfs_cal_mm === undefined
+                ? ""
+                : toNumber(row.rain_gfs_cal_mm);
+            const calibrationFactor = row.gfs_cal_factor === "" || row.gfs_cal_factor === undefined
+                ? ""
+                : toNumber(row.gfs_cal_factor);
+            const calibrationSamples = row.gfs_cal_samples === "" || row.gfs_cal_samples === undefined
+                ? ""
+                : toNumber(row.gfs_cal_samples);
 
             return {
                 ...row,
@@ -998,12 +1024,19 @@ function enrichForecastRows(rows, layer = "district") {
                 sub_basin: row.sub_basin || "",
                 area_sqkm: row.area_sqkm === "" ? "" : toNumber(row.area_sqkm),
                 alert_gfs_raw: alertForRainfall(rawGfsRain),
+                alert_gfs_cal: normalizeAlert(row.alert_gfs_cal || alertForRainfall(calibratedGfsRain)),
                 alert_gfs_bc: normalizeAlert(row.alert_gfs_bc),
                 alert_icon: normalizeAlert(row.alert_icon),
                 rain_gfs_mm: rawGfsRain,
                 imd_mean_mm: row.imd_mean_mm === "" ? "" : toNumber(row.imd_mean_mm),
                 bias_factor: row.bias_factor === "" ? "" : toNumber(row.bias_factor),
                 rain_gfs_bc_mm: toNumber(row.rain_gfs_bc_mm),
+                gfs_cal_factor: calibrationFactor,
+                gfs_cal_threshold_mm: row.gfs_cal_threshold_mm === "" || row.gfs_cal_threshold_mm === undefined
+                    ? ""
+                    : toNumber(row.gfs_cal_threshold_mm),
+                gfs_cal_samples: calibrationSamples,
+                rain_gfs_cal_mm: calibratedGfsRain,
                 rain_icon_mm: toNumber(row.rain_icon_mm)
             };
         });
@@ -1077,6 +1110,10 @@ function enrichVerificationRows(rows) {
             rain_gfs_24h_mm: toOptionalNumber(row.rain_gfs_24h_mm),
             bias_factor: toOptionalNumber(row.bias_factor),
             rain_gfs_bc_24h_mm: toOptionalNumber(row.rain_gfs_bc_24h_mm),
+            gfs_cal_factor: toOptionalNumber(row.gfs_cal_factor),
+            gfs_cal_threshold_mm: toOptionalNumber(row.gfs_cal_threshold_mm),
+            gfs_cal_samples: toOptionalNumber(row.gfs_cal_samples),
+            rain_gfs_cal_24h_mm: toOptionalNumber(row.rain_gfs_cal_24h_mm),
             rain_icon_24h_mm: toOptionalNumber(row.rain_icon_24h_mm),
             imd_observed_mm: toOptionalNumber(row.imd_observed_mm),
             error_gfs_raw_mm: toOptionalNumber(row.error_gfs_raw_mm ?? row.error_gfs_bc_mm),
@@ -1218,7 +1255,7 @@ function aggregateVerificationRecords(records, mode) {
             observed: record.imd_observed_mm,
             count: 1,
             observedCount: record.imd_observed_mm === null ? 0 : 1,
-            tooltip: `${formatCompactDate(record.valid_date)} | Issue: ${verificationIssueLabel(record)} | Raw GFS: ${formatMetric(record.rain_gfs_24h_mm, 2, " mm")} | Bias-corrected: ${formatMetric(record.rain_gfs_bc_24h_mm, 2, " mm")} | IMD: ${formatMetric(record.imd_observed_mm, 2, " mm")}`
+            tooltip: `${formatCompactDate(record.valid_date)} | Issue: ${verificationIssueLabel(record)} | Raw GFS: ${formatMetric(record.rain_gfs_24h_mm, 2, " mm")} | Paper-calibrated: ${formatMetric(record.rain_gfs_cal_24h_mm, 2, " mm")} | IMD: ${formatMetric(record.imd_observed_mm, 2, " mm")}`
         }));
     }
 
@@ -1273,40 +1310,111 @@ function verificationMetrics(points) {
         return {
             matched: 0,
             r2: null,
+            cc: null,
             bias: null,
-            rmse: null
+            relativeBias: null,
+            rmse: null,
+            pod: null,
+            far: null,
+            csi: null,
+            tss: null
         };
     }
 
     const errors = matched.map(point => point.forecast - point.observed);
     const bias = errors.reduce((sum, value) => sum + value, 0) / matched.length;
+    const observedTotal = matched.reduce((sum, point) => sum + point.observed, 0);
+    const forecastTotal = matched.reduce((sum, point) => sum + point.forecast, 0);
+    const relativeBias = Math.abs(observedTotal) >= 0.1
+        ? ((forecastTotal - observedTotal) / observedTotal) * 100.0
+        : null;
     const rmse = Math.sqrt(
         errors.reduce((sum, value) => sum + value * value, 0) / matched.length
     );
     let r2 = null;
+    let cc = null;
 
     if (matched.length >= 2) {
         const observedMean = matched.reduce((sum, point) => sum + point.observed, 0) / matched.length;
-        const ssTot = matched.reduce((sum, point) => {
+        const forecastMean = matched.reduce((sum, point) => sum + point.forecast, 0) / matched.length;
+        const covariance = matched.reduce((sum, point) => (
+            sum + ((point.forecast - forecastMean) * (point.observed - observedMean))
+        ), 0);
+        const forecastVariance = matched.reduce((sum, point) => {
+            const diff = point.forecast - forecastMean;
+            return sum + diff * diff;
+        }, 0);
+        const observedVariance = matched.reduce((sum, point) => {
             const diff = point.observed - observedMean;
             return sum + diff * diff;
         }, 0);
-        const ssRes = matched.reduce((sum, point) => {
-            const diff = point.observed - point.forecast;
-            return sum + diff * diff;
-        }, 0);
 
-        if (ssTot > 0) {
-            r2 = 1 - (ssRes / ssTot);
+        if (forecastVariance > 0 && observedVariance > 0) {
+            cc = covariance / Math.sqrt(forecastVariance * observedVariance);
+            r2 = cc * cc;
         }
     }
+
+    const contingency = matched.reduce((counts, point) => {
+        const forecastRain = point.forecast >= RAIN_EVENT_THRESHOLD_MM;
+        const observedRain = point.observed >= RAIN_EVENT_THRESHOLD_MM;
+
+        if (forecastRain && observedRain) counts.hits += 1;
+        if (forecastRain && !observedRain) counts.falseAlarms += 1;
+        if (!forecastRain && observedRain) counts.misses += 1;
+        if (!forecastRain && !observedRain) counts.correctNegatives += 1;
+
+        return counts;
+    }, {
+        hits: 0,
+        falseAlarms: 0,
+        misses: 0,
+        correctNegatives: 0
+    });
+
+    const podDenominator = contingency.hits + contingency.misses;
+    const farDenominator = contingency.hits + contingency.falseAlarms;
+    const csiDenominator = contingency.hits + contingency.falseAlarms + contingency.misses;
+    const falseAlarmRateDenominator = contingency.falseAlarms + contingency.correctNegatives;
+    const pod = podDenominator ? contingency.hits / podDenominator : null;
+    const far = farDenominator ? contingency.falseAlarms / farDenominator : null;
+    const csi = csiDenominator ? contingency.hits / csiDenominator : null;
+    const falseAlarmRate = falseAlarmRateDenominator
+        ? contingency.falseAlarms / falseAlarmRateDenominator
+        : null;
+    const tss = pod !== null && falseAlarmRate !== null ? pod - falseAlarmRate : null;
 
     return {
         matched: matched.length,
         r2,
+        cc,
         bias,
-        rmse
+        relativeBias,
+        rmse,
+        pod,
+        far,
+        csi,
+        tss
     };
+}
+
+function setVerificationMetrics(metrics = null) {
+    elements.verificationMatched.textContent = metrics
+        ? metrics.matched.toLocaleString("en-IN")
+        : "0";
+    elements.verificationR2.textContent = metrics?.r2 === null || metrics?.r2 === undefined
+        ? "-"
+        : formatNumber(metrics.r2, 3);
+    elements.verificationCc.textContent = metrics?.cc === null || metrics?.cc === undefined
+        ? "-"
+        : formatNumber(metrics.cc, 3);
+    elements.verificationBias.textContent = formatMetric(metrics?.bias, 2, " mm");
+    elements.verificationRelBias.textContent = formatMetric(metrics?.relativeBias, 1, "%");
+    elements.verificationRmse.textContent = formatMetric(metrics?.rmse, 2, " mm");
+    elements.verificationPod.textContent = formatMetric(metrics?.pod, 3);
+    elements.verificationFar.textContent = formatMetric(metrics?.far, 3);
+    elements.verificationCsi.textContent = formatMetric(metrics?.csi, 3);
+    elements.verificationTss.textContent = formatMetric(metrics?.tss, 3);
 }
 
 function updateSummary(rows) {
@@ -1440,8 +1548,11 @@ function drawMap() {
                 `${escapeHtml(displayContext(row) || layerConfigs[activeLayer].label)}<br>` +
                 `Basin: ${escapeHtml(row.basin || "-")}<br>` +
                 `Raw GFS rainfall: ${formatNumber(row.rain_gfs_mm)} mm<br>` +
+                `Paper-calibrated rainfall: ${formatMetric(row.rain_gfs_cal_mm, 2, " mm")}<br>` +
+                `Calibration factor: ${formatMetric(row.gfs_cal_factor, 2)} (${formatMetric(row.gfs_cal_samples, 0)} samples)<br>` +
                 `Bias-corrected rainfall: ${formatNumber(row.rain_gfs_bc_mm)} mm<br>` +
                 `Raw GFS alert: ${escapeHtml(row.alert_gfs_raw)}<br>` +
+                `Cal alert: ${escapeHtml(row.alert_gfs_cal)}<br>` +
                 `BC alert: ${escapeHtml(row.alert_gfs_bc)}<br>` +
                 `ICON alert: ${escapeHtml(row.alert_icon)}`
             );
@@ -1499,7 +1610,7 @@ function renderDistribution(row) {
     const records = distributionMap[rowKey(row)] || [];
     const cycleText = records[0]?.cycle_time_ist ? ` | Cycle: ${records[0].cycle_time_ist}` : "";
     elements.selectedDistrictSummary.textContent =
-        `${displayName(row)}${displayContext(row) ? `, ${displayContext(row)}` : ""} | 24h raw GFS total: ${formatNumber(row.rain_gfs_mm)} mm | bias-corrected: ${formatNumber(row.rain_gfs_bc_mm)} mm${cycleText}`;
+        `${displayName(row)}${displayContext(row) ? `, ${displayContext(row)}` : ""} | 24h raw GFS total: ${formatNumber(row.rain_gfs_mm)} mm | paper-calibrated: ${formatMetric(row.rain_gfs_cal_mm, 2, " mm")}${cycleText}`;
     elements.distributionNote.textContent = records.length
         ? `${records.length} intervals | IST valid time`
         : "pending";
@@ -1524,10 +1635,7 @@ function renderVerification(row) {
             "Daily IMD verification is currently available for the district layer.";
         elements.verificationNote.textContent = "district only";
         elements.downloadDistrictVerification.disabled = true;
-        elements.verificationMatched.textContent = "0";
-        elements.verificationR2.textContent = "-";
-        elements.verificationBias.textContent = "-";
-        elements.verificationRmse.textContent = "-";
+        setVerificationMetrics();
         elements.verificationChart.innerHTML =
             `<div class="chart-empty">Switch to Districts to view IMD observed rainfall verification.</div>`;
         return;
@@ -1537,10 +1645,7 @@ function renderVerification(row) {
         elements.verificationSummary.textContent = "No district selected.";
         elements.verificationNote.textContent = "";
         elements.downloadDistrictVerification.disabled = true;
-        elements.verificationMatched.textContent = "0";
-        elements.verificationR2.textContent = "-";
-        elements.verificationBias.textContent = "-";
-        elements.verificationRmse.textContent = "-";
+        setVerificationMetrics();
         elements.verificationChart.innerHTML =
             `<div class="chart-empty">Select a district to view daily forecast verification.</div>`;
         return;
@@ -1558,10 +1663,7 @@ function renderVerification(row) {
         ? `${dailyRecordCount} daily dates | ${records.length} archived cycles`
         : "pending";
     elements.downloadDistrictVerification.disabled = records.length === 0;
-    elements.verificationMatched.textContent = metrics.matched.toLocaleString("en-IN");
-    elements.verificationR2.textContent = metrics.r2 === null ? "-" : formatNumber(metrics.r2, 3);
-    elements.verificationBias.textContent = formatMetric(metrics.bias, 2, " mm");
-    elements.verificationRmse.textContent = formatMetric(metrics.rmse, 2, " mm");
+    setVerificationMetrics(metrics);
 
     if (!records.length) {
         elements.verificationChart.innerHTML =
@@ -1762,6 +1864,10 @@ const verificationCsvHeaders = [
     "rain_gfs_24h_mm",
     "bias_factor",
     "rain_gfs_bc_24h_mm",
+    "gfs_cal_factor",
+    "gfs_cal_threshold_mm",
+    "gfs_cal_samples",
+    "rain_gfs_cal_24h_mm",
     "rain_icon_24h_mm",
     "imd_observed_mm",
     "observed_status",
