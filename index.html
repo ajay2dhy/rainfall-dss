@@ -530,6 +530,7 @@ const SUBBASINS_GEOJSON = "subbasins.geojson";
 const WATERSHED_DATA_CSV = "India_24h_GFS_IMD_ICON_Watershed_Rainfall.csv";
 const WATERSHED_DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Watershed_Rainfall.csv";
 const WATERSHEDS_GEOJSON = "watersheds.geojson";
+const RAW_DATA_BASE = "https://raw.githubusercontent.com/ajay2dhy/rainfall-dss/main/";
 const DATA_CACHE_BUSTER = Date.now().toString();
 const FORECAST_TIME_ZONE = "Asia/Kolkata";
 const HOURS_TO_MS = 60 * 60 * 1000;
@@ -694,12 +695,32 @@ function freshUrl(url) {
     return `${url}${separator}v=${DATA_CACHE_BUSTER}`;
 }
 
-async function fetchCsv(url) {
-    const response = await fetch(freshUrl(url), { cache: "no-store" });
-    if (!response.ok) {
-        throw new Error(`${url} returned ${response.status}`);
+function rawAssetUrl(url) {
+    if (/^https?:\/\//i.test(url)) {
+        return freshUrl(url);
     }
-    return parseCsvText(await response.text());
+
+    return freshUrl(`${RAW_DATA_BASE}${url}`);
+}
+
+async function fetchAssetText(url) {
+    const response = await fetch(freshUrl(url), { cache: "no-store" });
+
+    if (response.ok) {
+        return response.text();
+    }
+
+    const fallbackResponse = await fetch(rawAssetUrl(url), { cache: "no-store" });
+
+    if (!fallbackResponse.ok) {
+        throw new Error(`${url} returned ${response.status}; raw fallback returned ${fallbackResponse.status}`);
+    }
+
+    return fallbackResponse.text();
+}
+
+async function fetchCsv(url) {
+    return parseCsvText(await fetchAssetText(url));
 }
 
 async function fetchOptionalCsv(url) {
@@ -711,11 +732,7 @@ async function fetchOptionalCsv(url) {
 }
 
 async function fetchJson(url) {
-    const response = await fetch(freshUrl(url), { cache: "no-store" });
-    if (!response.ok) {
-        throw new Error(`${url} returned ${response.status}`);
-    }
-    return response.json();
+    return JSON.parse(await fetchAssetText(url));
 }
 
 async function fetchOptionalJson(url) {
@@ -1956,7 +1973,7 @@ function downloadArchiveFile(filename) {
     }
 
     const link = document.createElement("a");
-    link.href = freshUrl(filename);
+    link.href = rawAssetUrl(filename);
     link.download = filename;
     document.body.appendChild(link);
     link.click();
