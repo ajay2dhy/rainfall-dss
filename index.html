@@ -468,7 +468,8 @@ button:disabled {
                 <div class="distribution-actions">
                     <button type="button" id="downloadDistrictDistribution" disabled>Download district CSV</button>
                     <button type="button" id="downloadAllDistribution" disabled>Download all CSV</button>
-                    <button type="button" id="download3hTimeSeries" disabled>Download date-wise 3h CSV</button>
+                    <button type="button" id="download3hTimeSeries" disabled>Download appended 3h CSV</button>
+                    <button type="button" id="downloadDailyTotals" disabled>Download daily total CSV</button>
                     <button type="button" id="download3hArchive" disabled>Download selected 3h archive</button>
                 </div>
             </div>
@@ -650,6 +651,7 @@ const elements = {
     downloadDistrictDistribution: document.getElementById("downloadDistrictDistribution"),
     downloadAllDistribution: document.getElementById("downloadAllDistribution"),
     download3hTimeSeries: document.getElementById("download3hTimeSeries"),
+    downloadDailyTotals: document.getElementById("downloadDailyTotals"),
     download3hArchive: document.getElementById("download3hArchive"),
     verificationNote: document.getElementById("verificationNote"),
     verificationSummary: document.getElementById("verificationSummary"),
@@ -1679,6 +1681,7 @@ function renderDistribution(row) {
         elements.downloadDistrictDistribution.disabled = true;
         elements.downloadAllDistribution.disabled = distributionData.length === 0;
         elements.download3hTimeSeries.disabled = true;
+        elements.downloadDailyTotals.disabled = true;
         elements.download3hArchive.disabled = true;
         elements.distributionChart.innerHTML =
             `<div class="chart-empty">Select a ${layerConfigs[activeLayer].singular} to view the 3-hour distribution.</div>`;
@@ -1695,7 +1698,8 @@ function renderDistribution(row) {
     const hasArchiveCsv = Boolean(datasets[activeLayer]?.archive3hCsv);
     elements.downloadDistrictDistribution.disabled = records.length === 0;
     elements.downloadAllDistribution.disabled = distributionData.length === 0;
-    elements.download3hTimeSeries.disabled = records.length === 0;
+    elements.download3hTimeSeries.disabled = !hasArchiveCsv;
+    elements.downloadDailyTotals.disabled = !hasArchiveCsv;
     elements.download3hArchive.disabled = !hasArchiveCsv;
 
     if (!records.length) {
@@ -1956,6 +1960,11 @@ const threeHourTimeSeriesCsvHeaders = [
     "Rainfall (mm)"
 ];
 
+const dailyTotalCsvHeaders = [
+    "Date (IST)",
+    "Daily total forecast rainfall (mm)"
+];
+
 const verificationCsvHeaders = [
     "unit_type",
     "unit_id",
@@ -2072,44 +2081,148 @@ function intervalSortValue(row) {
     return endDate ? endDate.getTime() : Number(row.to_hour || 0);
 }
 
-function build3hTimeSeriesRows(records) {
-    return [...records]
-        .sort((a, b) => (
-            intervalSortValue(a) - intervalSortValue(b) ||
-            Number(a.to_hour || 0) - Number(b.to_hour || 0)
-        ))
-        .map(row => {
-            const timeStamp = intervalEndDate(row);
-            const rainfall = row.rain_gfs_bc_mm === "" || row.rain_gfs_bc_mm === undefined
-                ? row.rain_gfs_mm
-                : row.rain_gfs_bc_mm;
+function issueSortValue(row) {
+    const issueDate = parseUtcDateTime(row.forecast_issue_time_utc);
 
+    if (issueDate) {
+        return issueDate.getTime();
+    }
+
+    const baseDate = forecastBaseDate(row);
+    return baseDate ? baseDate.getTime() : 0;
+}
+
+function rainfallForTimeSeries(row) {
+    return row.rain_gfs_bc_mm === "" || row.rain_gfs_bc_mm === undefined
+        ? row.rain_gfs_mm
+        : row.rain_gfs_bc_mm;
+}
+
+function build3hTimeSeriesRows(records) {
+    const byTimestamp = new Map();
+
+    records.forEach(row => {
+        const timeStamp = intervalEndDate(row);
+
+        if (!timeStamp) {
+            return;
+        }
+
+        const key = formatIsoDateTimeInTimeZone(timeStamp);
+        const existing = byTimestamp.get(key);
+
+        if (!existing || issueSortValue(row) >= issueSortValue(existing.row)) {
+            byTimestamp.set(key, { key, row, timeStamp });
+        }
+    });
+
+    return [...byTimestamp.values()]
+        .sort((a, b) => a.timeStamp.getTime() - b.timeStamp.getTime())
+        .map(item => {
             return {
-                "DateTime (IST)": timeStamp ? formatIsoDateTimeInTimeZone(timeStamp) : "",
-                "Rainfall (mm)": rainfall
+                "DateTime (IST)": item.key,
+                "Rainfall (mm)": rainfallForTimeSeries(item.row)
             };
         });
 }
 
-function download3hTimeSeries() {
+function buildDailyTotalRows(timeSeriesRows) {
+    const totalsByDate = new Map();
+
+    timeSeriesRows.forEach(row => {
+        const dateText = String(row["DateTime (IST)"] || "").slice(0, 10);
+        const rainfall = Number(row["Rainfall (mm)"]);
+
+        if (!dateText || !Number.isFinite(rainfall)) {
+            return;
+        }
+
+        totalsByDate.set(dateText, (totalsByDate.get(dateText) || 0) + rainfall);
+    });
+
+    return [...totalsByDate.entries()]
+        .sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([dateText, rainfall]) => ({
+            "Date (IST)": dateText,
+            "Daily total forecast rainfall (mm)": Number(rainfall.toFixed(6))
+        }));
+}
+
+async function loadSelected3hTimeSeriesRows(filename) {
+    if (!filename || !selectedDistrictKey) {
+        return [];
+    }
+
+    const archiveRows = parseCsvText(await fetchAssetText(filename));
+    const selectedRows = archiveRows.filter(row => rowKey(row) === selectedDistrictKey);
+    return build3hTimeSeriesRows(selectedRows);
+}
+
+async function download3hTimeSeries() {
     if (!selectedDistrictKey) {
         return;
     }
 
-    const records = distributionMap[selectedDistrictKey] || [];
+    elements.download3hTimeSeries.disabled = true;
+    const originalText = elements.download3hTimeSeries.textContent;
+    elements.download3hTimeSeries.textContent = "Preparing download...";
 
-    if (!records.length) {
-        window.alert("No current 3-hour rows found for the selected area yet.");
+    try {
+        const records = await loadSelected3hTimeSeriesRows(datasets[activeLayer]?.archive3hCsv);
+
+        if (!records.length) {
+            window.alert("No appended 3-hour rows found for the selected area yet.");
+            return;
+        }
+
+        const selectedRow = rainfallMap[selectedDistrictKey] || {};
+        const name = displayName(selectedRow) || selectedDistrictKey.split("||").pop();
+        downloadCsv(
+            `${safeFilename(name)}_appended_3h_rainfall_timeseries.csv`,
+            records,
+            threeHourTimeSeriesCsvHeaders
+        );
+    } catch (error) {
+        console.error(error);
+        window.alert("Unable to prepare the appended 3-hour time series. Please try again after the latest GitHub Pages build finishes.");
+    } finally {
+        elements.download3hTimeSeries.textContent = originalText;
+        elements.download3hTimeSeries.disabled = archiveDownloadDisabled();
+    }
+}
+
+async function downloadDailyTotals() {
+    if (!selectedDistrictKey) {
         return;
     }
 
-    const selectedRow = rainfallMap[selectedDistrictKey] || records[0];
-    const name = displayName(selectedRow) || selectedDistrictKey.split("||").pop();
-    downloadCsv(
-        `${safeFilename(name)}_datewise_3h_rainfall_timeseries.csv`,
-        build3hTimeSeriesRows(records),
-        threeHourTimeSeriesCsvHeaders
-    );
+    elements.downloadDailyTotals.disabled = true;
+    const originalText = elements.downloadDailyTotals.textContent;
+    elements.downloadDailyTotals.textContent = "Preparing download...";
+
+    try {
+        const records = await loadSelected3hTimeSeriesRows(datasets[activeLayer]?.archive3hCsv);
+        const dailyRows = buildDailyTotalRows(records);
+
+        if (!dailyRows.length) {
+            window.alert("No daily forecast totals could be calculated for the selected area yet.");
+            return;
+        }
+
+        const selectedRow = rainfallMap[selectedDistrictKey] || {};
+        const name = displayName(selectedRow) || selectedDistrictKey.split("||").pop();
+        downloadCsv(
+            `${safeFilename(name)}_daily_total_forecast_rainfall.csv`,
+            dailyRows,
+            dailyTotalCsvHeaders
+        );
+    } catch (error) {
+        console.error(error);
+        window.alert("Unable to prepare the daily forecast totals. Please try again after the latest GitHub Pages build finishes.");
+    } finally {
+        elements.downloadDailyTotals.textContent = originalText;
+        elements.downloadDailyTotals.disabled = archiveDownloadDisabled();
+    }
 }
 async function downloadArchiveFile(filename) {
     if (!filename || !selectedDistrictKey) {
@@ -2170,11 +2283,13 @@ function setActiveLayer(layer) {
     elements.filterBox.options[0].textContent = `All ${layerConfigs[layer].label.toLowerCase()}`;
     elements.downloadDistrictDistribution.textContent = `Download selected ${layerConfigs[layer].singular} CSV`;
     elements.downloadAllDistribution.textContent = `Download all ${layerConfigs[layer].label.toLowerCase()} CSV`;
-    elements.download3hTimeSeries.textContent = `Download date-wise 3h CSV`;
+    elements.download3hTimeSeries.textContent = `Download appended 3h CSV`;
+    elements.downloadDailyTotals.textContent = `Download daily total CSV`;
     elements.download3hArchive.textContent = `Download selected 3h archive`;
     elements.downloadDistrictVerification.textContent = `Download selected ${layerConfigs[layer].singular} CSV`;
     elements.downloadAllVerification.textContent = `Download all ${layerConfigs[layer].label.toLowerCase()} CSV`;
     elements.download3hTimeSeries.disabled = true;
+    elements.downloadDailyTotals.disabled = true;
     elements.download3hArchive.disabled = true;
     buildTableHead();
     populateBasinOptions();
@@ -2201,6 +2316,7 @@ function bindEvents() {
     elements.downloadDistrictDistribution.addEventListener("click", downloadSelectedDistribution);
     elements.downloadAllDistribution.addEventListener("click", downloadAllDistribution);
     elements.download3hTimeSeries.addEventListener("click", download3hTimeSeries);
+    elements.downloadDailyTotals.addEventListener("click", downloadDailyTotals);
     elements.download3hArchive.addEventListener("click", download3hArchive);
     elements.verificationPeriodBox.addEventListener("change", () => {
         const selectedRow = forecastData.find(item => rowKey(item) === selectedDistrictKey);
