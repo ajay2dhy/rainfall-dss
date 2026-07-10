@@ -1949,29 +1949,9 @@ const threeHourArchiveCsvHeaders = [
 ];
 
 const threeHourTimeSeriesCsvHeaders = [
-    "unit_type",
-    "unit_id",
-    "unit_name",
-    "state",
-    "district",
-    "basin",
-    "sub_basin",
-    "area_sqkm",
-    "forecast_issue_date",
-    "cycle_utc",
-    "forecast_issue_time_ist",
-    "valid_start_date_ist",
-    "valid_start_time_ist",
-    "valid_end_date_ist",
-    "valid_end_time_ist",
-    "time_window_ist",
-    "from_hour",
-    "to_hour",
-    "interval_label",
-    "rain_gfs_mm",
-    "bias_factor",
-    "rain_gfs_bc_mm",
-    "rain_icon_mm"
+    "Date",
+    "Time",
+    "Rainfall (mm)"
 ];
 
 const verificationCsvHeaders = [
@@ -2095,36 +2075,17 @@ function build3hTimeSeriesRows(selectedRows) {
             Number(a.to_hour || 0) - Number(b.to_hour || 0)
         ))
         .map(row => {
-            const issueDate = parseUtcDateTime(row.forecast_issue_time_utc);
             const startDate = parseUtcDateTime(row.valid_start_utc);
             const endDate = parseUtcDateTime(row.valid_end_utc);
-            const startText = startDate ? formatForecastDateTime(startDate) : "";
-            const endText = endDate ? formatForecastDateTime(endDate) : "";
+            const timeStamp = endDate || startDate;
+            const rainfall = row.rain_gfs_bc_mm === "" || row.rain_gfs_bc_mm === undefined
+                ? row.rain_gfs_mm
+                : row.rain_gfs_bc_mm;
 
             return {
-                unit_type: row.unit_type,
-                unit_id: row.unit_id,
-                unit_name: row.unit_name,
-                state: row.state,
-                district: row.district,
-                basin: row.basin,
-                sub_basin: row.sub_basin,
-                area_sqkm: row.area_sqkm,
-                forecast_issue_date: row.forecast_issue_date,
-                cycle_utc: String(row.cycle_utc || "").padStart(2, "0"),
-                forecast_issue_time_ist: issueDate ? `${formatForecastDateTime(issueDate)} IST` : "",
-                valid_start_date_ist: formatArchiveDate(startDate),
-                valid_start_time_ist: formatArchiveTime(startDate),
-                valid_end_date_ist: formatArchiveDate(endDate),
-                valid_end_time_ist: formatArchiveTime(endDate),
-                time_window_ist: startText && endText ? `${startText} - ${endText} IST` : row.interval_label,
-                from_hour: row.from_hour,
-                to_hour: row.to_hour,
-                interval_label: row.interval_label,
-                rain_gfs_mm: row.rain_gfs_mm,
-                bias_factor: row.bias_factor,
-                rain_gfs_bc_mm: row.rain_gfs_bc_mm,
-                rain_icon_mm: row.rain_icon_mm
+                "Date": formatArchiveDate(timeStamp),
+                "Time": formatArchiveTime(timeStamp),
+                "Rainfall (mm)": rainfall
             };
         });
 }
@@ -2351,4 +2312,5 @@ init();
 </script>
 </body>
 </html>
+
 
