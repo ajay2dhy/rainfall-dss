@@ -802,26 +802,29 @@ const forecastTimeFormatter = new Intl.DateTimeFormat("en-IN", {
     hour12: true
 });
 
-const forecastIsoDatePartsFormatter = new Intl.DateTimeFormat("en-US", {
+const forecastIsoDateTimePartsFormatter = new Intl.DateTimeFormat("en-US", {
     timeZone: FORECAST_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
-    day: "2-digit"
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23"
 });
 
 function normalizeMeridiem(value) {
     return String(value).replace(/\b(am|pm)\b/gi, text => text.toUpperCase());
 }
 
-function formatIsoDateInTimeZone(date) {
-    const parts = forecastIsoDatePartsFormatter
+function formatIsoDateTimeInTimeZone(date) {
+    const parts = forecastIsoDateTimePartsFormatter
         .formatToParts(date)
         .reduce((lookup, part) => {
             lookup[part.type] = part.value;
             return lookup;
         }, {});
 
-    return `${parts.year}-${parts.month}-${parts.day}`;
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function parseUtcDateTime(value) {
@@ -1949,8 +1952,7 @@ const threeHourArchiveCsvHeaders = [
 ];
 
 const threeHourTimeSeriesCsvHeaders = [
-    "Date",
-    "Time",
+    "DateTime (IST)",
     "Rainfall (mm)"
 ];
 
@@ -2058,14 +2060,6 @@ function archiveSortValue(row) {
     return Number(row.from_hour || 0);
 }
 
-function formatArchiveDate(date) {
-    return date ? formatIsoDateInTimeZone(date) : "";
-}
-
-function formatArchiveTime(date) {
-    return date ? formatForecastTime(date) : "";
-}
-
 function build3hTimeSeriesRows(selectedRows) {
     return [...selectedRows]
         .sort((a, b) => (
@@ -2083,8 +2077,7 @@ function build3hTimeSeriesRows(selectedRows) {
                 : row.rain_gfs_bc_mm;
 
             return {
-                "Date": formatArchiveDate(timeStamp),
-                "Time": formatArchiveTime(timeStamp),
+                "DateTime (IST)": timeStamp ? formatIsoDateTimeInTimeZone(timeStamp) : "",
                 "Rainfall (mm)": rainfall
             };
         });
