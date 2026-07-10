@@ -56,6 +56,7 @@ WATERSHED_DAILY_VERIFICATION_CSV = (
 DISTRICT_3H_ARCHIVE_CSV = "India_3h_GFS_District_Archive.csv"
 SUBBASIN_3H_ARCHIVE_CSV = "India_3h_GFS_Subbasin_Archive.csv"
 WATERSHED_3H_ARCHIVE_CSV = "India_3h_GFS_Watershed_Archive.csv"
+THREE_H_ARCHIVE_MAX_CYCLES = 4
 CALIBRATION_THRESHOLD_MM = 12.0
 CALIBRATION_FACTOR_MIN = 0.25
 CALIBRATION_FACTOR_MAX = 4.0
@@ -861,6 +862,17 @@ def update_3h_archive(distribution_df, unit_type, archive_csv):
             "to_hour"
         ],
         keep="last"
+    )
+    cycle_keys = (
+        archive_df[["forecast_issue_date", "cycle_utc"]]
+        .drop_duplicates()
+        .sort_values(["forecast_issue_date", "cycle_utc"])
+        .tail(THREE_H_ARCHIVE_MAX_CYCLES)
+    )
+    archive_df = archive_df.merge(
+        cycle_keys,
+        on=["forecast_issue_date", "cycle_utc"],
+        how="inner"
     )
     archive_df = archive_df[THREE_H_ARCHIVE_COLUMNS].sort_values(
         [
