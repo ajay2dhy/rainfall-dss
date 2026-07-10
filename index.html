@@ -1695,7 +1695,7 @@ function renderDistribution(row) {
     const hasArchiveCsv = Boolean(datasets[activeLayer]?.archive3hCsv);
     elements.downloadDistrictDistribution.disabled = records.length === 0;
     elements.downloadAllDistribution.disabled = distributionData.length === 0;
-    elements.download3hTimeSeries.disabled = !hasArchiveCsv;
+    elements.download3hTimeSeries.disabled = records.length === 0;
     elements.download3hArchive.disabled = !hasArchiveCsv;
 
     if (!records.length) {
@@ -2050,28 +2050,36 @@ function archiveDownloadDisabled() {
     return !datasets[activeLayer]?.archive3hCsv || !selectedDistrictKey;
 }
 
-function archiveSortValue(row) {
-    const validStart = parseUtcDateTime(row.valid_start_utc);
+function intervalEndDate(row) {
+    const validEnd = parseUtcDateTime(row.valid_end_utc);
 
-    if (validStart) {
-        return validStart.getTime();
+    if (validEnd) {
+        return validEnd;
     }
 
-    return Number(row.from_hour || 0);
+    const baseDate = forecastBaseDate(row);
+
+    if (!baseDate) {
+        return null;
+    }
+
+    return new Date(baseDate.getTime() + Number(row.to_hour || 0) * HOURS_TO_MS);
 }
 
-function build3hTimeSeriesRows(selectedRows) {
-    return [...selectedRows]
+function intervalSortValue(row) {
+    const endDate = intervalEndDate(row);
+
+    return endDate ? endDate.getTime() : Number(row.to_hour || 0);
+}
+
+function build3hTimeSeriesRows(records) {
+    return [...records]
         .sort((a, b) => (
-            String(a.forecast_issue_date || "").localeCompare(String(b.forecast_issue_date || "")) ||
-            String(a.cycle_utc || "").padStart(2, "0").localeCompare(String(b.cycle_utc || "").padStart(2, "0")) ||
-            archiveSortValue(a) - archiveSortValue(b) ||
+            intervalSortValue(a) - intervalSortValue(b) ||
             Number(a.to_hour || 0) - Number(b.to_hour || 0)
         ))
         .map(row => {
-            const startDate = parseUtcDateTime(row.valid_start_utc);
-            const endDate = parseUtcDateTime(row.valid_end_utc);
-            const timeStamp = endDate || startDate;
+            const timeStamp = intervalEndDate(row);
             const rainfall = row.rain_gfs_bc_mm === "" || row.rain_gfs_bc_mm === undefined
                 ? row.rain_gfs_mm
                 : row.rain_gfs_bc_mm;
@@ -2083,42 +2091,25 @@ function build3hTimeSeriesRows(selectedRows) {
         });
 }
 
-async function download3hTimeSeriesFile(filename) {
-    if (!filename || !selectedDistrictKey) {
+function download3hTimeSeries() {
+    if (!selectedDistrictKey) {
         return;
     }
 
-    elements.download3hTimeSeries.disabled = true;
-    const originalText = elements.download3hTimeSeries.textContent;
-    elements.download3hTimeSeries.textContent = "Preparing download...";
+    const records = distributionMap[selectedDistrictKey] || [];
 
-    try {
-        const archiveRows = parseCsvText(await fetchAssetText(filename));
-        const selectedRows = archiveRows.filter(row => rowKey(row) === selectedDistrictKey);
-
-        if (!selectedRows.length) {
-            window.alert("No historical 3-hour rows found for the selected area yet.");
-            return;
-        }
-
-        const selectedRow = rainfallMap[selectedDistrictKey] || selectedRows[0];
-        const name = displayName(selectedRow) || selectedDistrictKey.split("||").pop();
-        downloadCsv(
-            `${safeFilename(name)}_datewise_3h_rainfall_timeseries.csv`,
-            build3hTimeSeriesRows(selectedRows),
-            threeHourTimeSeriesCsvHeaders
-        );
-    } catch (error) {
-        console.error(error);
-        window.alert(`Unable to prepare selected time series from ${filename}. Please try again after the latest GitHub Pages build finishes.`);
-    } finally {
-        elements.download3hTimeSeries.textContent = originalText;
-        elements.download3hTimeSeries.disabled = archiveDownloadDisabled();
+    if (!records.length) {
+        window.alert("No current 3-hour rows found for the selected area yet.");
+        return;
     }
-}
 
-function download3hTimeSeries() {
-    download3hTimeSeriesFile(datasets[activeLayer]?.archive3hCsv);
+    const selectedRow = rainfallMap[selectedDistrictKey] || records[0];
+    const name = displayName(selectedRow) || selectedDistrictKey.split("||").pop();
+    downloadCsv(
+        `${safeFilename(name)}_datewise_3h_rainfall_timeseries.csv`,
+        build3hTimeSeriesRows(records),
+        threeHourTimeSeriesCsvHeaders
+    );
 }
 async function downloadArchiveFile(filename) {
     if (!filename || !selectedDistrictKey) {
