@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -468,6 +468,7 @@ button:disabled {
                 <div class="distribution-actions">
                     <button type="button" id="downloadDistrictDistribution" disabled>Download district CSV</button>
                     <button type="button" id="downloadAllDistribution" disabled>Download all CSV</button>
+                    <button type="button" id="download3hTimeSeries" disabled>Download date-wise 3h CSV</button>
                     <button type="button" id="download3hArchive" disabled>Download selected 3h archive</button>
                 </div>
             </div>
@@ -648,6 +649,7 @@ const elements = {
     distributionChart: document.getElementById("distributionChart"),
     downloadDistrictDistribution: document.getElementById("downloadDistrictDistribution"),
     downloadAllDistribution: document.getElementById("downloadAllDistribution"),
+    download3hTimeSeries: document.getElementById("download3hTimeSeries"),
     download3hArchive: document.getElementById("download3hArchive"),
     verificationNote: document.getElementById("verificationNote"),
     verificationSummary: document.getElementById("verificationSummary"),
@@ -800,8 +802,42 @@ const forecastTimeFormatter = new Intl.DateTimeFormat("en-IN", {
     hour12: true
 });
 
+const forecastIsoDatePartsFormatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: FORECAST_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+});
+
 function normalizeMeridiem(value) {
     return String(value).replace(/\b(am|pm)\b/gi, text => text.toUpperCase());
+}
+
+function formatIsoDateInTimeZone(date) {
+    const parts = forecastIsoDatePartsFormatter
+        .formatToParts(date)
+        .reduce((lookup, part) => {
+            lookup[part.type] = part.value;
+            return lookup;
+        }, {});
+
+    return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function parseUtcDateTime(value) {
+    const text = String(value || "").trim();
+
+    if (!text) {
+        return null;
+    }
+
+    const isoText = text.includes("T") ? text : text.replace(" ", "T");
+    const normalized = /(?:Z|[+-]\d{2}:?\d{2})$/i.test(isoText)
+        ? isoText
+        : `${isoText}Z`;
+    const date = new Date(normalized);
+
+    return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function forecastBaseDate(record) {
@@ -1639,6 +1675,7 @@ function renderDistribution(row) {
         elements.distributionNote.textContent = "";
         elements.downloadDistrictDistribution.disabled = true;
         elements.downloadAllDistribution.disabled = distributionData.length === 0;
+        elements.download3hTimeSeries.disabled = true;
         elements.download3hArchive.disabled = true;
         elements.distributionChart.innerHTML =
             `<div class="chart-empty">Select a ${layerConfigs[activeLayer].singular} to view the 3-hour distribution.</div>`;
@@ -1652,9 +1689,11 @@ function renderDistribution(row) {
     elements.distributionNote.textContent = records.length
         ? `${records.length} intervals | IST valid time`
         : "pending";
+    const hasArchiveCsv = Boolean(datasets[activeLayer]?.archive3hCsv);
     elements.downloadDistrictDistribution.disabled = records.length === 0;
     elements.downloadAllDistribution.disabled = distributionData.length === 0;
-    elements.download3hArchive.disabled = !datasets[activeLayer]?.archive3hCsv;
+    elements.download3hTimeSeries.disabled = !hasArchiveCsv;
+    elements.download3hArchive.disabled = !hasArchiveCsv;
 
     if (!records.length) {
         elements.distributionChart.innerHTML =
@@ -1909,6 +1948,32 @@ const threeHourArchiveCsvHeaders = [
     "updated_at_utc"
 ];
 
+const threeHourTimeSeriesCsvHeaders = [
+    "unit_type",
+    "unit_id",
+    "unit_name",
+    "state",
+    "district",
+    "basin",
+    "sub_basin",
+    "area_sqkm",
+    "forecast_issue_date",
+    "cycle_utc",
+    "forecast_issue_time_ist",
+    "valid_start_date_ist",
+    "valid_start_time_ist",
+    "valid_end_date_ist",
+    "valid_end_time_ist",
+    "time_window_ist",
+    "from_hour",
+    "to_hour",
+    "interval_label",
+    "rain_gfs_mm",
+    "bias_factor",
+    "rain_gfs_bc_mm",
+    "rain_icon_mm"
+];
+
 const verificationCsvHeaders = [
     "unit_type",
     "unit_id",
@@ -1999,6 +2064,108 @@ function downloadAllVerification() {
     downloadCsv(`india_${activeLayer}_daily_forecast_imd_verification.csv`, verificationData, verificationCsvHeaders);
 }
 
+function archiveDownloadDisabled() {
+    return !datasets[activeLayer]?.archive3hCsv || !selectedDistrictKey;
+}
+
+function archiveSortValue(row) {
+    const validStart = parseUtcDateTime(row.valid_start_utc);
+
+    if (validStart) {
+        return validStart.getTime();
+    }
+
+    return Number(row.from_hour || 0);
+}
+
+function formatArchiveDate(date) {
+    return date ? formatIsoDateInTimeZone(date) : "";
+}
+
+function formatArchiveTime(date) {
+    return date ? formatForecastTime(date) : "";
+}
+
+function build3hTimeSeriesRows(selectedRows) {
+    return [...selectedRows]
+        .sort((a, b) => (
+            String(a.forecast_issue_date || "").localeCompare(String(b.forecast_issue_date || "")) ||
+            String(a.cycle_utc || "").padStart(2, "0").localeCompare(String(b.cycle_utc || "").padStart(2, "0")) ||
+            archiveSortValue(a) - archiveSortValue(b) ||
+            Number(a.to_hour || 0) - Number(b.to_hour || 0)
+        ))
+        .map(row => {
+            const issueDate = parseUtcDateTime(row.forecast_issue_time_utc);
+            const startDate = parseUtcDateTime(row.valid_start_utc);
+            const endDate = parseUtcDateTime(row.valid_end_utc);
+            const startText = startDate ? formatForecastDateTime(startDate) : "";
+            const endText = endDate ? formatForecastDateTime(endDate) : "";
+
+            return {
+                unit_type: row.unit_type,
+                unit_id: row.unit_id,
+                unit_name: row.unit_name,
+                state: row.state,
+                district: row.district,
+                basin: row.basin,
+                sub_basin: row.sub_basin,
+                area_sqkm: row.area_sqkm,
+                forecast_issue_date: row.forecast_issue_date,
+                cycle_utc: String(row.cycle_utc || "").padStart(2, "0"),
+                forecast_issue_time_ist: issueDate ? `${formatForecastDateTime(issueDate)} IST` : "",
+                valid_start_date_ist: formatArchiveDate(startDate),
+                valid_start_time_ist: formatArchiveTime(startDate),
+                valid_end_date_ist: formatArchiveDate(endDate),
+                valid_end_time_ist: formatArchiveTime(endDate),
+                time_window_ist: startText && endText ? `${startText} - ${endText} IST` : row.interval_label,
+                from_hour: row.from_hour,
+                to_hour: row.to_hour,
+                interval_label: row.interval_label,
+                rain_gfs_mm: row.rain_gfs_mm,
+                bias_factor: row.bias_factor,
+                rain_gfs_bc_mm: row.rain_gfs_bc_mm,
+                rain_icon_mm: row.rain_icon_mm
+            };
+        });
+}
+
+async function download3hTimeSeriesFile(filename) {
+    if (!filename || !selectedDistrictKey) {
+        return;
+    }
+
+    elements.download3hTimeSeries.disabled = true;
+    const originalText = elements.download3hTimeSeries.textContent;
+    elements.download3hTimeSeries.textContent = "Preparing download...";
+
+    try {
+        const archiveRows = parseCsvText(await fetchAssetText(filename));
+        const selectedRows = archiveRows.filter(row => rowKey(row) === selectedDistrictKey);
+
+        if (!selectedRows.length) {
+            window.alert("No historical 3-hour rows found for the selected area yet.");
+            return;
+        }
+
+        const selectedRow = rainfallMap[selectedDistrictKey] || selectedRows[0];
+        const name = displayName(selectedRow) || selectedDistrictKey.split("||").pop();
+        downloadCsv(
+            `${safeFilename(name)}_datewise_3h_rainfall_timeseries.csv`,
+            build3hTimeSeriesRows(selectedRows),
+            threeHourTimeSeriesCsvHeaders
+        );
+    } catch (error) {
+        console.error(error);
+        window.alert(`Unable to prepare selected time series from ${filename}. Please try again after the latest GitHub Pages build finishes.`);
+    } finally {
+        elements.download3hTimeSeries.textContent = originalText;
+        elements.download3hTimeSeries.disabled = archiveDownloadDisabled();
+    }
+}
+
+function download3hTimeSeries() {
+    download3hTimeSeriesFile(datasets[activeLayer]?.archive3hCsv);
+}
 async function downloadArchiveFile(filename) {
     if (!filename || !selectedDistrictKey) {
         return;
@@ -2029,7 +2196,7 @@ async function downloadArchiveFile(filename) {
         window.alert(`Unable to prepare selected archive from ${filename}. Please try again after the latest GitHub Pages build finishes.`);
     } finally {
         elements.download3hArchive.textContent = originalText;
-        elements.download3hArchive.disabled = !datasets[activeLayer]?.archive3hCsv || !selectedDistrictKey;
+        elements.download3hArchive.disabled = archiveDownloadDisabled();
     }
 }
 
@@ -2058,9 +2225,11 @@ function setActiveLayer(layer) {
     elements.filterBox.options[0].textContent = `All ${layerConfigs[layer].label.toLowerCase()}`;
     elements.downloadDistrictDistribution.textContent = `Download selected ${layerConfigs[layer].singular} CSV`;
     elements.downloadAllDistribution.textContent = `Download all ${layerConfigs[layer].label.toLowerCase()} CSV`;
+    elements.download3hTimeSeries.textContent = `Download date-wise 3h CSV`;
     elements.download3hArchive.textContent = `Download selected 3h archive`;
     elements.downloadDistrictVerification.textContent = `Download selected ${layerConfigs[layer].singular} CSV`;
     elements.downloadAllVerification.textContent = `Download all ${layerConfigs[layer].label.toLowerCase()} CSV`;
+    elements.download3hTimeSeries.disabled = true;
     elements.download3hArchive.disabled = true;
     buildTableHead();
     populateBasinOptions();
@@ -2086,6 +2255,7 @@ function bindEvents() {
     });
     elements.downloadDistrictDistribution.addEventListener("click", downloadSelectedDistribution);
     elements.downloadAllDistribution.addEventListener("click", downloadAllDistribution);
+    elements.download3hTimeSeries.addEventListener("click", download3hTimeSeries);
     elements.download3hArchive.addEventListener("click", download3hArchive);
     elements.verificationPeriodBox.addEventListener("change", () => {
         const selectedRow = forecastData.find(item => rowKey(item) === selectedDistrictKey);
@@ -2181,3 +2351,4 @@ init();
 </script>
 </body>
 </html>
+
