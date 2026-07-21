@@ -61,6 +61,11 @@ WATERSHED_DAILY_VERIFICATION_CSV = (
 DISTRICT_3H_ARCHIVE_CSV = "India_3h_GFS_District_Archive.csv"
 SUBBASIN_3H_ARCHIVE_CSV = "India_3h_GFS_Subbasin_Archive.csv"
 WATERSHED_3H_ARCHIVE_CSV = "India_3h_GFS_Watershed_Archive.csv"
+SUBBASIN_DISTRICT_CROSSWALK_CSV = "India_Subbasin_District_Crosswalk.csv"
+SUBBASIN_WATERSHED_CROSSWALK_CSV = "India_Subbasin_Watershed_Crosswalk.csv"
+DISTRICT_WATERSHED_CROSSWALK_CSV = "India_District_Watershed_Crosswalk.csv"
+CROSSWALK_AREA_CRS = "EPSG:6933"
+CROSSWALK_MIN_AREA_SQKM = 0.01
 THREE_H_ARCHIVE_MAX_CYCLES = 4
 CALIBRATION_THRESHOLD_MM = 12.0
 CALIBRATION_FACTOR_MIN = 0.25
@@ -615,6 +620,26 @@ UNIT_COLUMNS = [
     "area_sqkm"
 ]
 
+CROSSWALK_COLUMNS = [
+    "parent_type",
+    "parent_id",
+    "parent_name",
+    "parent_key",
+    "parent_state",
+    "parent_basin",
+    "parent_sub_basin",
+    "child_type",
+    "child_id",
+    "child_name",
+    "child_key",
+    "child_state",
+    "child_basin",
+    "child_sub_basin",
+    "intersection_area_sqkm",
+    "parent_overlap_pct",
+    "child_overlap_pct"
+]
+
 DAILY_ARCHIVE_COLUMNS = UNIT_COLUMNS + [
     "state",
     "district",
@@ -1069,6 +1094,161 @@ def write_district_geojson(districts_gdf):
     web_gdf.to_file(out_path, driver="GeoJSON")
 
 
+def empty_crosswalk(filename):
+    out_path = os.path.join(OUTPUT_DIR, filename)
+    pd.DataFrame(columns=CROSSWALK_COLUMNS).to_csv(out_path, index=False)
+    print(f"Related layer crosswalk -> {filename}: 0 links")
+
+
+def crosswalk_key(layer, unit_id, state="", district=""):
+    if layer == "district":
+        return f"district||{state}||{district}"
+    return f"{layer}||{unit_id}"
+
+
+def prepare_crosswalk_units(gdf, layer):
+    if gdf is None or gdf.empty:
+        return gpd.GeoDataFrame(columns=UNIT_COLUMNS + ["state", "district", "geometry"])
+
+    if layer == "district":
+        frame = gdf[[STATE_COL, DIST_COL, "geometry"]].copy()
+        frame["state"] = clean_text(frame[STATE_COL])
+        frame["district"] = clean_text(frame[DIST_COL])
+        frame["unit_type"] = "district"
+        frame["unit_id"] = frame["state"] + "||" + frame["district"]
+        frame["unit_name"] = frame["district"]
+        frame["basin"] = ""
+        frame["sub_basin"] = ""
+        frame["area_sqkm"] = 0.0
+    else:
+        frame = gdf[UNIT_COLUMNS + ["geometry"]].copy()
+        frame["state"] = ""
+        frame["district"] = ""
+        frame["unit_type"] = layer
+        frame["unit_id"] = clean_text(frame["unit_id"])
+        frame["unit_name"] = clean_text(frame["unit_name"])
+        frame["basin"] = clean_text(frame["basin"])
+        frame["sub_basin"] = clean_text(frame["sub_basin"])
+
+    frame = frame[frame.geometry.notna() & ~frame.geometry.is_empty].copy()
+    frame["geometry"] = frame.geometry.buffer(0)
+    frame = frame[frame.geometry.notna() & ~frame.geometry.is_empty].copy()
+    frame["_cw_key"] = frame.apply(
+        lambda row: crosswalk_key(
+            layer,
+            row["unit_id"],
+            row.get("state", ""),
+            row.get("district", "")
+        ),
+        axis=1
+    )
+    return frame
+
+
+def safe_pct(part, total):
+    return 0.0 if not total else (part / total) * 100.0
+
+
+def write_unit_crosswalk(parent_gdf, child_gdf, parent_layer, child_layer, filename):
+    parent = prepare_crosswalk_units(parent_gdf, parent_layer)
+    child = prepare_crosswalk_units(child_gdf, child_layer)
+
+    if parent.empty or child.empty:
+        empty_crosswalk(filename)
+        return pd.DataFrame(columns=CROSSWALK_COLUMNS)
+
+    parent = parent.to_crs(CROSSWALK_AREA_CRS).reset_index(drop=True)
+    child = child.to_crs(CROSSWALK_AREA_CRS).reset_index(drop=True)
+    parent["_cw_area_sqkm"] = parent.geometry.area / 1_000_000.0
+    child["_cw_area_sqkm"] = child.geometry.area / 1_000_000.0
+
+    rows = []
+    child_sindex = child.sindex
+
+    for _, parent_row in parent.iterrows():
+        candidate_indexes = child_sindex.query(
+            parent_row.geometry,
+            predicate="intersects"
+        )
+
+        for child_index in candidate_indexes:
+            child_row = child.iloc[child_index]
+
+            try:
+                intersection = parent_row.geometry.intersection(child_row.geometry)
+            except Exception:
+                continue
+
+            if intersection.is_empty:
+                continue
+
+            area_sqkm = intersection.area / 1_000_000.0
+            if area_sqkm < CROSSWALK_MIN_AREA_SQKM:
+                continue
+
+            rows.append({
+                "parent_type": parent_layer,
+                "parent_id": parent_row["unit_id"],
+                "parent_name": parent_row["unit_name"],
+                "parent_key": parent_row["_cw_key"],
+                "parent_state": parent_row.get("state", ""),
+                "parent_basin": parent_row.get("basin", ""),
+                "parent_sub_basin": parent_row.get("sub_basin", ""),
+                "child_type": child_layer,
+                "child_id": child_row["unit_id"],
+                "child_name": child_row["unit_name"],
+                "child_key": child_row["_cw_key"],
+                "child_state": child_row.get("state", ""),
+                "child_basin": child_row.get("basin", ""),
+                "child_sub_basin": child_row.get("sub_basin", ""),
+                "intersection_area_sqkm": round(area_sqkm, 4),
+                "parent_overlap_pct": round(
+                    safe_pct(area_sqkm, parent_row["_cw_area_sqkm"]),
+                    2
+                ),
+                "child_overlap_pct": round(
+                    safe_pct(area_sqkm, child_row["_cw_area_sqkm"]),
+                    2
+                )
+            })
+
+    out_df = pd.DataFrame(rows, columns=CROSSWALK_COLUMNS)
+    if not out_df.empty:
+        out_df = out_df.sort_values(
+            ["parent_type", "parent_name", "child_type", "child_name"]
+        )
+    out_path = os.path.join(OUTPUT_DIR, filename)
+    out_df.to_csv(out_path, index=False)
+    print(f"Related layer crosswalk -> {filename}: {len(out_df)} links")
+    return out_df
+
+
+def write_related_crosswalks(districts_gdf, hydro_units):
+    subbasins = hydro_units.get("subbasin") if hydro_units else None
+    watersheds = hydro_units.get("watershed") if hydro_units else None
+
+    write_unit_crosswalk(
+        subbasins,
+        districts_gdf,
+        "subbasin",
+        "district",
+        SUBBASIN_DISTRICT_CROSSWALK_CSV
+    )
+    write_unit_crosswalk(
+        subbasins,
+        watersheds,
+        "subbasin",
+        "watershed",
+        SUBBASIN_WATERSHED_CROSSWALK_CSV
+    )
+    write_unit_crosswalk(
+        districts_gdf,
+        watersheds,
+        "district",
+        "watershed",
+        DISTRICT_WATERSHED_CROSSWALK_CSV
+    )
+
 def lat_lon_names(da):
     lon_name = next(
         name for name in ["longitude", "lon", "x"]
@@ -1292,6 +1472,7 @@ def build_hydrologic_outputs(gfs_records, icon_records, imd_means):
 districts = load_district_boundaries()
 write_district_geojson(districts)
 hydrologic_units = load_hydrologic_units()
+write_related_crosswalks(districts, hydrologic_units)
 
 # ------------------------------------------------------------------
 # STEP 1: IMD OBSERVED RAINFALL

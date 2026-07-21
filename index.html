@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -325,6 +325,46 @@ tbody tr.selected-row {
     margin-top: 10px;
 }
 
+.related-panel[hidden] {
+    display: none;
+}
+
+.related-controls,
+.related-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 10px;
+}
+
+.related-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    min-height: 34px;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    background: #fbfcfa;
+    color: var(--ink);
+    cursor: pointer;
+    font-size: 13px;
+    padding: 7px 10px;
+}
+
+.related-toggle input {
+    width: auto;
+    min-height: auto;
+    accent-color: var(--green);
+}
+
+.related-table-scroll {
+    max-height: 218px;
+    overflow: auto;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--panel);
+}
+
 .verification-controls {
     display: grid;
     grid-template-columns: minmax(150px, 1fr) auto auto;
@@ -474,6 +514,21 @@ button:disabled {
                 </div>
             </div>
 
+            <div class="hydro-panel related-panel" id="relatedPanel" hidden>
+                <h2 class="section-title">Related Areas <small id="relatedNote"></small></h2>
+                <div class="selected-summary" id="relatedSummary">Select an area to view related units.</div>
+                <div class="related-controls" id="relatedControls"></div>
+                <div class="related-actions">
+                    <button type="button" id="downloadRelatedCsv" disabled>Download related CSV</button>
+                </div>
+                <div class="related-table-scroll">
+                    <table>
+                        <thead id="relatedTableHead"></thead>
+                        <tbody id="relatedTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
             <div class="hydro-panel">
                 <h2 class="section-title">Daily Forecast vs IMD Observed <small id="verificationNote"></small></h2>
                 <div class="selected-summary" id="verificationSummary">Select a district to view daily verification.</div>
@@ -532,6 +587,9 @@ const SUBBASINS_GEOJSON = "subbasins.geojson";
 const WATERSHED_DATA_CSV = "India_24h_GFS_IMD_ICON_Watershed_Rainfall.csv";
 const WATERSHED_DISTRIBUTION_CSV = "India_3h_GFS_IMD_ICON_Watershed_Rainfall.csv";
 const WATERSHEDS_GEOJSON = "watersheds.geojson";
+const SUBBASIN_DISTRICT_CROSSWALK_CSV = "India_Subbasin_District_Crosswalk.csv";
+const SUBBASIN_WATERSHED_CROSSWALK_CSV = "India_Subbasin_Watershed_Crosswalk.csv";
+const DISTRICT_WATERSHED_CROSSWALK_CSV = "India_District_Watershed_Crosswalk.csv";
 const RAW_DATA_BASE = "https://raw.githubusercontent.com/ajay2dhy/rainfall-dss/main/";
 const DATA_CACHE_BUSTER = Date.now().toString();
 const FORECAST_TIME_ZONE = "Asia/Kolkata";
@@ -624,8 +682,16 @@ let rainfallMap = {};
 let distributionMap = {};
 let verificationMap = {};
 let districtBasinMap = {};
+let relatedCrosswalks = {};
+let visibleRelatedRows = [];
 let geoLayer = null;
+let relatedOverlayGroup = null;
 let selectedDistrictKey = null;
+const relatedVisibility = {
+    subbasin_district: true,
+    subbasin_watershed: true,
+    district_watershed: true
+};
 
 const elements = {
     status: document.getElementById("status"),
@@ -653,6 +719,13 @@ const elements = {
     download3hTimeSeries: document.getElementById("download3hTimeSeries"),
     downloadDailyTotals: document.getElementById("downloadDailyTotals"),
     download3hArchive: document.getElementById("download3hArchive"),
+    relatedPanel: document.getElementById("relatedPanel"),
+    relatedNote: document.getElementById("relatedNote"),
+    relatedSummary: document.getElementById("relatedSummary"),
+    relatedControls: document.getElementById("relatedControls"),
+    relatedTableHead: document.getElementById("relatedTableHead"),
+    relatedTableBody: document.getElementById("relatedTableBody"),
+    downloadRelatedCsv: document.getElementById("downloadRelatedCsv"),
     verificationNote: document.getElementById("verificationNote"),
     verificationSummary: document.getElementById("verificationSummary"),
     verificationPeriodBox: document.getElementById("verificationPeriodBox"),
@@ -684,6 +757,8 @@ L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 10,
     attribution: "&copy; OpenStreetMap"
 }).addTo(map);
+
+relatedOverlayGroup = L.layerGroup().addTo(map);
 
 function parseCsvText(text) {
     return Papa.parse(text, {
@@ -1569,6 +1644,7 @@ function applyFilters() {
         const selectedRow = filteredData.find(row => rowKey(row) === selectedDistrictKey);
         renderDistribution(selectedRow);
         renderVerification(selectedRow);
+        renderRelatedPanel(selectedRow);
         markSelectedTableRow();
     }
 }
@@ -1639,24 +1715,299 @@ function drawMap() {
     }).addTo(map);
 }
 
-function featureRowKey(feature) {
+function featureKeyForLayer(feature, layer) {
     const props = feature.properties || {};
 
-    if (activeLayer === "district") {
+    if (layer === "district") {
         return `district||${props.NAME_1 || ""}||${props.NAME_2 || ""}`;
     }
 
-    return `${props.unit_type || activeLayer}||${props.unit_id || ""}`;
+    return `${props.unit_type || layer}||${props.unit_id || ""}`;
 }
 
-function featureName(feature) {
+function featureRowKey(feature) {
+    return featureKeyForLayer(feature, activeLayer);
+}
+
+function featureNameForLayer(feature, layer) {
     const props = feature.properties || {};
 
-    if (activeLayer === "district") {
+    if (layer === "district") {
         return props.NAME_2 || "District";
     }
 
-    return props.unit_name || props.unit_id || layerConfigs[activeLayer].singular;
+    return props.unit_name || props.unit_id || layerConfigs[layer].singular;
+}
+
+function featureName(feature) {
+    return featureNameForLayer(feature, activeLayer);
+}
+
+function buildFeatureIndex(layer, geojson) {
+    const index = new Map();
+
+    (geojson?.features || []).forEach(feature => {
+        const key = featureKeyForLayer(feature, layer);
+        if (key) {
+            index.set(key, feature);
+        }
+    });
+
+    return index;
+}
+
+function setupDatasetIndexes() {
+    Object.entries(datasets).forEach(([layer, dataset]) => {
+        dataset.rowMap = Object.fromEntries(
+            dataset.forecast.map(row => [rowKey(row), row])
+        );
+        dataset.featureIndex = buildFeatureIndex(layer, dataset.geojson);
+    });
+}
+
+function relatedDefinitionsForActiveLayer() {
+    if (activeLayer === "subbasin") {
+        return [
+            {
+                id: "subbasin_district",
+                label: "Districts in selected subbasin",
+                childLayer: "district",
+                crosswalk: relatedCrosswalks.subbasin_district || [],
+                lineColor: "#2563eb",
+                fillColor: "#dbeafe"
+            },
+            {
+                id: "subbasin_watershed",
+                label: "Watersheds in selected subbasin",
+                childLayer: "watershed",
+                crosswalk: relatedCrosswalks.subbasin_watershed || [],
+                lineColor: "#d97706",
+                fillColor: "#fff2cc"
+            }
+        ];
+    }
+
+    if (activeLayer === "district") {
+        return [
+            {
+                id: "district_watershed",
+                label: "Watersheds in selected district",
+                childLayer: "watershed",
+                crosswalk: relatedCrosswalks.district_watershed || [],
+                lineColor: "#d97706",
+                fillColor: "#fff2cc"
+            }
+        ];
+    }
+
+    return [];
+}
+
+function enrichRelatedRows(parentRow) {
+    if (!parentRow) {
+        return [];
+    }
+
+    const parentKey = rowKey(parentRow);
+    const activeDefinitions = relatedDefinitionsForActiveLayer()
+        .filter(definition => relatedVisibility[definition.id]);
+
+    return activeDefinitions.flatMap(definition => {
+        const childDataset = datasets[definition.childLayer];
+        const childRows = childDataset?.rowMap || {};
+
+        return definition.crosswalk
+            .filter(link => link.parent_key === parentKey)
+            .map(link => {
+                const childRow = childRows[link.child_key] || {};
+                const childName = displayName(childRow) || link.child_name || link.child_id;
+                const childContext = displayContext(childRow) ||
+                    [link.child_state, link.child_basin, link.child_sub_basin]
+                        .filter(Boolean)
+                        .join(" | ");
+
+                return {
+                    ...link,
+                    related_group: definition.label,
+                    child_layer: definition.childLayer,
+                    child_layer_label: layerConfigs[definition.childLayer].singular,
+                    child_display_name: childName,
+                    child_context: childContext,
+                    rain_gfs_mm: childRow.rain_gfs_mm ?? "",
+                    rain_gfs_bc_mm: childRow.rain_gfs_bc_mm ?? "",
+                    rain_icon_mm: childRow.rain_icon_mm ?? "",
+                    alert_gfs_raw: childRow.alert_gfs_raw || "",
+                    alert_gfs_bc: childRow.alert_gfs_bc || "",
+                    alert_icon: childRow.alert_icon || "",
+                    date: childRow.date || "",
+                    cycle_utc: childRow.cycle_utc || ""
+                };
+            });
+    }).sort((a, b) =>
+        a.child_layer.localeCompare(b.child_layer) ||
+        Number(b.parent_overlap_pct || 0) - Number(a.parent_overlap_pct || 0) ||
+        String(a.child_display_name).localeCompare(String(b.child_display_name))
+    );
+}
+
+function clearRelatedOverlays() {
+    if (relatedOverlayGroup) {
+        relatedOverlayGroup.clearLayers();
+    }
+}
+
+function relatedPopupHtml(row) {
+    return (
+        `<b>${escapeHtml(row.child_display_name)}</b><br>` +
+        `${escapeHtml(row.child_layer_label)} | ${escapeHtml(row.child_context || "-")}<br>` +
+        `Overlap in selected area: ${formatMetric(row.parent_overlap_pct, 1, "%")}<br>` +
+        `Raw GFS rainfall: ${formatMetric(row.rain_gfs_mm, 2, " mm")}<br>` +
+        `Bias-corrected rainfall: ${formatMetric(row.rain_gfs_bc_mm, 2, " mm")}<br>` +
+        `ICON rainfall: ${formatMetric(row.rain_icon_mm, 2, " mm")}<br>` +
+        `BC alert: ${escapeHtml(row.alert_gfs_bc || "-")}`
+    );
+}
+
+function drawRelatedOverlays(rows) {
+    clearRelatedOverlays();
+
+    relatedDefinitionsForActiveLayer()
+        .filter(definition => relatedVisibility[definition.id])
+        .forEach(definition => {
+            const dataset = datasets[definition.childLayer];
+            if (!dataset?.featureIndex) {
+                return;
+            }
+
+            const layerRows = rows.filter(row => row.child_layer === definition.childLayer);
+            const features = layerRows
+                .map(row => dataset.featureIndex.get(row.child_key))
+                .filter(Boolean);
+
+            if (!features.length) {
+                return;
+            }
+
+            const rowByKey = Object.fromEntries(layerRows.map(row => [row.child_key, row]));
+            const overlay = L.geoJSON({ type: "FeatureCollection", features }, {
+                style: feature => {
+                    const key = featureKeyForLayer(feature, definition.childLayer);
+                    const row = rowByKey[key] || {};
+                    const weight = Math.max(1, Math.min(4, Number(row.child_overlap_pct || 0) / 30));
+
+                    return {
+                        color: definition.lineColor,
+                        fillColor: definition.fillColor,
+                        fillOpacity: 0.12,
+                        opacity: 0.95,
+                        weight
+                    };
+                },
+                onEachFeature: (feature, layer) => {
+                    const key = featureKeyForLayer(feature, definition.childLayer);
+                    const row = rowByKey[key];
+                    if (row) {
+                        layer.bindPopup(relatedPopupHtml(row));
+                    }
+                }
+            });
+
+            relatedOverlayGroup.addLayer(overlay);
+        });
+
+    relatedOverlayGroup.eachLayer(layer => {
+        if (layer.bringToFront) {
+            layer.bringToFront();
+        }
+    });
+}
+
+function renderRelatedControls(definitions) {
+    elements.relatedControls.innerHTML = definitions.map(definition => {
+        const disabled = !definition.crosswalk.length || !datasets[definition.childLayer];
+        const checked = relatedVisibility[definition.id] && !disabled ? "checked" : "";
+        const disabledText = disabled ? "disabled" : "";
+
+        return `
+            <label class="related-toggle">
+                <input type="checkbox" data-related-id="${escapeHtml(definition.id)}" ${checked} ${disabledText}>
+                ${escapeHtml(definition.label)}
+            </label>
+        `;
+    }).join("");
+}
+
+function renderRelatedTable(rows) {
+    elements.relatedTableHead.innerHTML = `
+        <tr>
+            <th>Layer</th>
+            <th>Name</th>
+            <th>Context</th>
+            <th>Overlap</th>
+            <th>Raw GFS</th>
+            <th>Bias-corrected</th>
+            <th>BC alert</th>
+        </tr>
+    `;
+
+    if (!rows.length) {
+        elements.relatedTableBody.innerHTML =
+            `<tr><td colspan="7">No related areas are available for the current selection.</td></tr>`;
+        return;
+    }
+
+    elements.relatedTableBody.innerHTML = rows.map(row => `
+        <tr>
+            <td>${escapeHtml(row.child_layer_label)}</td>
+            <td>${escapeHtml(row.child_display_name)}</td>
+            <td>${escapeHtml(row.child_context || "-")}</td>
+            <td class="num">${formatMetric(row.parent_overlap_pct, 1, "%")}</td>
+            <td class="num">${formatMetric(row.rain_gfs_mm, 2, " mm")}</td>
+            <td class="num">${formatMetric(row.rain_gfs_bc_mm, 2, " mm")}</td>
+            <td>${escapeHtml(row.alert_gfs_bc || "-")}</td>
+        </tr>
+    `).join("");
+}
+
+function renderRelatedPanel(row) {
+    const definitions = relatedDefinitionsForActiveLayer()
+        .filter(definition => datasets[definition.childLayer]);
+
+    if (!definitions.length) {
+        elements.relatedPanel.hidden = true;
+        visibleRelatedRows = [];
+        clearRelatedOverlays();
+        return;
+    }
+
+    elements.relatedPanel.hidden = false;
+    renderRelatedControls(definitions);
+
+    if (!row) {
+        elements.relatedSummary.textContent =
+            `Select a ${layerConfigs[activeLayer].singular} to view related areas.`;
+        elements.relatedNote.textContent = "";
+        visibleRelatedRows = [];
+        elements.downloadRelatedCsv.disabled = true;
+        renderRelatedTable([]);
+        clearRelatedOverlays();
+        return;
+    }
+
+    visibleRelatedRows = enrichRelatedRows(row);
+    const activeCount = definitions.filter(definition => relatedVisibility[definition.id]).length;
+
+    elements.relatedSummary.textContent =
+        `${displayName(row)}${displayContext(row) ? `, ${displayContext(row)}` : ""}`;
+    elements.relatedNote.textContent = activeCount
+        ? `${visibleRelatedRows.length.toLocaleString("en-IN")} related areas`
+        : "options off";
+    elements.downloadRelatedCsv.disabled = visibleRelatedRows.length === 0;
+    elements.downloadRelatedCsv.textContent =
+        `Download related ${layerConfigs[activeLayer].singular} CSV`;
+
+    renderRelatedTable(visibleRelatedRows);
+    drawRelatedOverlays(visibleRelatedRows);
 }
 
 function selectDistrict(row) {
@@ -1664,6 +2015,7 @@ function selectDistrict(row) {
         selectedDistrictKey = null;
         renderDistribution(null);
         renderVerification(null);
+        renderRelatedPanel(null);
         markSelectedTableRow();
         return;
     }
@@ -1671,6 +2023,7 @@ function selectDistrict(row) {
     selectedDistrictKey = rowKey(row);
     renderDistribution(row);
     renderVerification(row);
+    renderRelatedPanel(row);
     markSelectedTableRow();
 }
 
@@ -1965,6 +2318,32 @@ const dailyTotalCsvHeaders = [
     "Daily total forecast rainfall (mm)"
 ];
 
+const relatedCsvHeaders = [
+    "related_group",
+    "parent_type",
+    "parent_id",
+    "parent_name",
+    "parent_key",
+    "child_type",
+    "child_id",
+    "child_name",
+    "child_key",
+    "child_state",
+    "child_basin",
+    "child_sub_basin",
+    "intersection_area_sqkm",
+    "parent_overlap_pct",
+    "child_overlap_pct",
+    "rain_gfs_mm",
+    "rain_gfs_bc_mm",
+    "rain_icon_mm",
+    "alert_gfs_raw",
+    "alert_gfs_bc",
+    "alert_icon",
+    "date",
+    "cycle_utc"
+];
+
 const verificationCsvHeaders = [
     "unit_type",
     "unit_id",
@@ -2224,6 +2603,20 @@ async function downloadDailyTotals() {
         elements.downloadDailyTotals.disabled = archiveDownloadDisabled();
     }
 }
+function downloadRelatedCsv() {
+    if (!selectedDistrictKey || !visibleRelatedRows.length) {
+        return;
+    }
+
+    const selectedRow = rainfallMap[selectedDistrictKey] || {};
+    const name = displayName(selectedRow) || selectedDistrictKey.split("||").pop();
+    downloadCsv(
+        `${safeFilename(name)}_related_areas.csv`,
+        visibleRelatedRows,
+        relatedCsvHeaders
+    );
+}
+
 async function downloadArchiveFile(filename) {
     if (!filename || !selectedDistrictKey) {
         return;
@@ -2305,6 +2698,16 @@ function bindEvents() {
     elements.searchBox.addEventListener("input", applyFilters);
     elements.filterBox.addEventListener("change", applyFilters);
     elements.basinBox.addEventListener("change", applyFilters);
+    elements.relatedControls.addEventListener("change", event => {
+        const input = event.target.closest("input[data-related-id]");
+        if (!input) {
+            return;
+        }
+
+        relatedVisibility[input.dataset.relatedId] = input.checked;
+        const selectedRow = forecastData.find(item => rowKey(item) === selectedDistrictKey);
+        renderRelatedPanel(selectedRow || null);
+    });
     elements.tableBody.addEventListener("click", event => {
         const rowElement = event.target.closest("tr[data-key]");
         if (!rowElement) {
@@ -2318,6 +2721,7 @@ function bindEvents() {
     elements.download3hTimeSeries.addEventListener("click", download3hTimeSeries);
     elements.downloadDailyTotals.addEventListener("click", downloadDailyTotals);
     elements.download3hArchive.addEventListener("click", download3hArchive);
+    elements.downloadRelatedCsv.addEventListener("click", downloadRelatedCsv);
     elements.verificationPeriodBox.addEventListener("change", () => {
         const selectedRow = forecastData.find(item => rowKey(item) === selectedDistrictKey);
         renderVerification(selectedRow || null);
@@ -2341,7 +2745,10 @@ async function init() {
             watershedRows,
             watershedDistributionRows,
             watershedVerificationRows,
-            watersheds
+            watersheds,
+            subbasinDistrictCrosswalk,
+            subbasinWatershedCrosswalk,
+            districtWatershedCrosswalk
         ] = await Promise.all([
             fetchCsv(BASIN_CSV),
             fetchCsv(DATA_CSV),
@@ -2355,7 +2762,10 @@ async function init() {
             fetchOptionalCsv(WATERSHED_DATA_CSV),
             fetchOptionalCsv(WATERSHED_DISTRIBUTION_CSV),
             fetchOptionalCsv(WATERSHED_VERIFICATION_CSV),
-            fetchOptionalJson(WATERSHEDS_GEOJSON)
+            fetchOptionalJson(WATERSHEDS_GEOJSON),
+            fetchOptionalCsv(SUBBASIN_DISTRICT_CROSSWALK_CSV),
+            fetchOptionalCsv(SUBBASIN_WATERSHED_CROSSWALK_CSV),
+            fetchOptionalCsv(DISTRICT_WATERSHED_CROSSWALK_CSV)
         ]);
 
         districtBasinMap = Object.fromEntries(
@@ -2363,6 +2773,12 @@ async function init() {
                 .filter(row => row.district && row.basin)
                 .map(row => [row.district, row.basin])
         );
+
+        relatedCrosswalks = {
+            subbasin_district: subbasinDistrictCrosswalk,
+            subbasin_watershed: subbasinWatershedCrosswalk,
+            district_watershed: districtWatershedCrosswalk
+        };
 
         datasets = {
             district: {
@@ -2393,6 +2809,8 @@ async function init() {
                 archive3hCsv: WATERSHED_3H_ARCHIVE_CSV
             };
         }
+
+        setupDatasetIndexes();
 
         Array.from(elements.layerBox.options).forEach(option => {
             option.disabled = !datasets[option.value];
