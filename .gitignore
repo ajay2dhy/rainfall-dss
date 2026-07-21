@@ -4,3 +4,6 @@ GFS_TMP/
 ICON_TMP/
 IMD_Rainfall/rain/*.grd
 IMD_Rainfall/realtime_rain/*.grd
+data/*.sbn
+data/*.sbx
+data/*.shp.xml

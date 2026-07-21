@@ -29,9 +29,14 @@ from datetime import datetime, timedelta
 # USER SETTINGS
 # ------------------------------------------------------------------
 
-DISTRICT_SHP = r"data/India_Districts.shp"
+DISTRICT_SHP = r"data/DISTRICT_BOUNDARY.shp"
+DISTRICT_SOURCE_DIST_COL = "District"
+DISTRICT_SOURCE_STATE_COL = "STATE"
 DIST_COL = "NAME_2"
 STATE_COL = "NAME_1"
+DISTRICT_GEOJSON = "india_districts.geojson"
+DISTRICT_PROCESS_SIMPLIFY_TOLERANCE = 0.01
+DISTRICT_GEOJSON_SIMPLIFY_TOLERANCE = 0.005
 
 HYDRO_DATA_DIR = os.path.abspath(os.path.join("..", "data"))
 SUBBASIN_SHP = os.path.join(HYDRO_DATA_DIR, "Subbasin.shp")
@@ -1003,6 +1008,67 @@ def write_hydrologic_geojson(gdf, filename, simplify_tolerance):
     web_gdf.to_file(out_path, driver="GeoJSON")
 
 
+def normalize_admin_name(value):
+    text = "" if value is None else str(value).strip()
+    text = text.replace(">", "A").replace("|", "I")
+    text = " ".join(text.split())
+    return text.title()
+
+
+def load_district_boundaries():
+    districts_gdf = gpd.read_file(DISTRICT_SHP)
+    districts_gdf = districts_gdf[
+        districts_gdf.geometry.notna() & ~districts_gdf.geometry.is_empty
+    ].copy()
+
+    missing_cols = [
+        col for col in [DISTRICT_SOURCE_STATE_COL, DISTRICT_SOURCE_DIST_COL]
+        if col not in districts_gdf.columns
+    ]
+    if missing_cols:
+        raise RuntimeError(
+            "District boundary shapefile is missing required field(s): " +
+            ", ".join(missing_cols)
+        )
+
+    districts_gdf[STATE_COL] = (
+        districts_gdf[DISTRICT_SOURCE_STATE_COL].map(normalize_admin_name)
+    )
+    districts_gdf[DIST_COL] = (
+        districts_gdf[DISTRICT_SOURCE_DIST_COL].map(normalize_admin_name)
+    )
+    districts_gdf = districts_gdf[
+        districts_gdf[STATE_COL].ne("") & districts_gdf[DIST_COL].ne("")
+    ].copy()
+
+    districts_gdf["geometry"] = districts_gdf.geometry.buffer(0)
+    districts_gdf = districts_gdf[
+        districts_gdf.geometry.notna() & ~districts_gdf.geometry.is_empty
+    ].copy()
+
+    districts_gdf = districts_gdf.to_crs("EPSG:4326")
+    districts_gdf["geometry"] = districts_gdf.geometry.simplify(
+        DISTRICT_PROCESS_SIMPLIFY_TOLERANCE,
+        preserve_topology=True
+    )
+    districts_gdf["geometry"] = districts_gdf.geometry.buffer(0)
+    districts_gdf["_unit_index"] = np.arange(len(districts_gdf))
+
+    return districts_gdf[
+        districts_gdf.geometry.notna() & ~districts_gdf.geometry.is_empty
+    ].copy()
+
+
+def write_district_geojson(districts_gdf):
+    out_path = os.path.join(OUTPUT_DIR, DISTRICT_GEOJSON)
+    web_gdf = districts_gdf[[STATE_COL, DIST_COL, "geometry"]].copy()
+    web_gdf["geometry"] = web_gdf.geometry.simplify(
+        DISTRICT_GEOJSON_SIMPLIFY_TOLERANCE,
+        preserve_topology=True
+    )
+    web_gdf.to_file(out_path, driver="GeoJSON")
+
+
 def lat_lon_names(da):
     lon_name = next(
         name for name in ["longitude", "lon", "x"]
@@ -1056,6 +1122,27 @@ def zonal_mean_points(da, units_gdf, value_col):
     result = units_gdf[UNIT_COLUMNS + ["_unit_index"]].copy()
     result[value_col] = result["_unit_index"].map(grouped).fillna(0.0)
     return result
+
+
+def district_zonal_mean_points(da, value_col):
+    unit_gdf = districts[[STATE_COL, DIST_COL, "_unit_index", "geometry"]].copy()
+    unit_gdf["unit_type"] = "district"
+    unit_gdf["unit_id"] = (
+        unit_gdf[STATE_COL].astype(str) + "||" +
+        unit_gdf[DIST_COL].astype(str)
+    )
+    unit_gdf["unit_name"] = unit_gdf[DIST_COL].astype(str)
+    unit_gdf["basin"] = ""
+    unit_gdf["sub_basin"] = ""
+    unit_gdf["area_sqkm"] = 0.0
+
+    means_df = zonal_mean_points(da, unit_gdf, value_col)
+    means_df["state"] = means_df["unit_id"].str.split("||", regex=False).str[0]
+    means_df["district"] = (
+        means_df["unit_id"].str.split("||", regex=False).str[1]
+    )
+
+    return means_df[["state", "district", value_col]]
 
 
 def append_unit_records(records, means_df, from_hour, to_hour, value_col):
@@ -1202,7 +1289,8 @@ def build_hydrologic_outputs(gfs_records, icon_records, imd_means):
 # LOAD DISTRICTS
 # ------------------------------------------------------------------
 
-districts = gpd.read_file(DISTRICT_SHP).to_crs("EPSG:4326")
+districts = load_district_boundaries()
+write_district_geojson(districts)
 hydrologic_units = load_hydrologic_units()
 
 # ------------------------------------------------------------------
@@ -1225,24 +1313,8 @@ if ds_imd is None:
         f"{baseline_imd_year}."
     )
 
-imd_means = []
-
-for _, row in districts.iterrows():
-    try:
-        clip = ds_imd["rain"].rio.clip(
-            [row.geometry], districts.crs, drop=True
-        )
-        mean_val = float(clip.mean(dim=["time", "lat", "lon"]).values)
-    except Exception:
-        mean_val = 0.0
-
-    imd_means.append({
-        "state": row[STATE_COL],
-        "district": row[DIST_COL],
-        "imd_mean_mm": mean_val
-    })
-
-imd_df = pd.DataFrame(imd_means)
+imd_mean_grid = ds_imd["rain"].mean(dim="time", skipna=True)
+imd_df = district_zonal_mean_points(imd_mean_grid, "imd_mean_mm")
 
 hydrologic_imd_means = {}
 
@@ -1316,21 +1388,13 @@ def observed_rainfall_by_district(date_yyyymmdd):
     if status != "MATCHED":
         return {}, status
 
-    observed = {}
-
-    for _, row in districts.iterrows():
-        state = row[STATE_COL]
-        district = row[DIST_COL]
-
-        try:
-            clip = daily_rain.rio.clip(
-                [row.geometry], districts.crs, drop=True
-            )
-            value = float(clip.mean(dim=["lat", "lon"]).values)
-        except Exception:
-            value = float("nan")
-
-        observed[row_key_from_values(state, district)] = value
+    means_df = district_zonal_mean_points(daily_rain, "imd_observed_mm")
+    observed = {
+        row_key_from_values(row["state"], row["district"]): row[
+            "imd_observed_mm"
+        ]
+        for row in means_df.to_dict("records")
+    }
 
     return observed, "MATCHED"
 
@@ -1509,23 +1573,17 @@ for fh in FORECAST_HOURS:
         rain_inc = (tp - prev_tp).where((tp - prev_tp) >= 0, 0)
         from_hr = prev_hr
 
-    for _, row in districts.iterrows():
-        try:
-            clip = rain_inc.rio.clip(
-                [row.geometry], districts.crs, drop=True
-            )
-            val = float(
-                clip.mean(dim=["latitude", "longitude"]).values
-            )
-        except Exception:
-            val = 0.0
-
+    district_means_df = district_zonal_mean_points(
+        rain_inc,
+        "rain_gfs_mm"
+    )
+    for row in district_means_df.to_dict("records"):
         gfs_records.append({
-            "state": row[STATE_COL],
-            "district": row[DIST_COL],
+            "state": row["state"],
+            "district": row["district"],
             "from_hour": from_hr,
             "to_hour": fh,
-            "rain_gfs_mm": val
+            "rain_gfs_mm": row["rain_gfs_mm"]
         })
 
     for unit_key, unit_gdf in hydrologic_units.items():
@@ -1616,23 +1674,17 @@ for fh in FORECAST_HOURS:
         rain_inc = (tp - prev_tp).where((tp - prev_tp) >= 0, 0)
         from_hr = prev_hr
 
-    for _, row in districts.iterrows():
-        try:
-            clip = rain_inc.rio.clip(
-                [row.geometry], districts.crs, drop=True
-            )
-            val = float(
-                clip.mean(dim=["latitude", "longitude"]).values
-            )
-        except Exception:
-            val = 0.0
-
+    district_means_df = district_zonal_mean_points(
+        rain_inc,
+        "rain_icon_mm"
+    )
+    for row in district_means_df.to_dict("records"):
         icon_records.append({
-            "state": row[STATE_COL],
-            "district": row[DIST_COL],
+            "state": row["state"],
+            "district": row["district"],
             "from_hour": from_hr,
             "to_hour": fh,
-            "rain_icon_mm": val
+            "rain_icon_mm": row["rain_icon_mm"]
         })
 
     for unit_key, unit_gdf in hydrologic_units.items():
