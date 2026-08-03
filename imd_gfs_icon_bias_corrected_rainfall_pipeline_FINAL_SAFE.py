@@ -69,7 +69,7 @@ CROSSWALK_MIN_AREA_SQKM = 0.01
 DAILY_ARCHIVE_MAX_VALID_DATES_BY_UNIT = {
     "district": 365,
     "subbasin": 365,
-    "watershed": 21
+    "watershed": 18
 }
 CSV_FLOAT_FORMAT = "%.4f"
 THREE_H_ARCHIVE_MAX_CYCLES = 4
