@@ -66,6 +66,12 @@ SUBBASIN_WATERSHED_CROSSWALK_CSV = "India_Subbasin_Watershed_Crosswalk.csv"
 DISTRICT_WATERSHED_CROSSWALK_CSV = "India_District_Watershed_Crosswalk.csv"
 CROSSWALK_AREA_CRS = "EPSG:6933"
 CROSSWALK_MIN_AREA_SQKM = 0.01
+DAILY_ARCHIVE_MAX_VALID_DATES_BY_UNIT = {
+    "district": 365,
+    "subbasin": 365,
+    "watershed": 21
+}
+CSV_FLOAT_FORMAT = "%.4f"
 THREE_H_ARCHIVE_MAX_CYCLES = 4
 CALIBRATION_THRESHOLD_MM = 12.0
 CALIBRATION_FACTOR_MIN = 0.25
@@ -920,6 +926,25 @@ def update_3h_archive(distribution_df, unit_type, archive_csv):
     return archive_df
 
 
+def limit_daily_archive_dates(archive_df, unit_type):
+    max_valid_dates = DAILY_ARCHIVE_MAX_VALID_DATES_BY_UNIT.get(unit_type, 365)
+
+    if max_valid_dates <= 0 or archive_df.empty:
+        return archive_df
+
+    valid_dates = sorted(
+        date_text
+        for date_text in archive_df["valid_date"].dropna().astype(str).unique()
+        if date_text and date_text.lower() != "nan"
+    )
+
+    if len(valid_dates) <= max_valid_dates:
+        return archive_df
+
+    keep_dates = set(valid_dates[-max_valid_dates:])
+    return archive_df[archive_df["valid_date"].astype(str).isin(keep_dates)].copy()
+
+
 def clean_text(series, fallback=""):
     return series.fillna(fallback).astype(str).replace("nan", fallback)
 
@@ -1709,6 +1734,7 @@ def update_daily_verification_archive(
     )
 
     archive_df = add_observed_values(archive_df, unit_type)
+    archive_df = limit_daily_archive_dates(archive_df, unit_type)
     archive_df = archive_df[DAILY_ARCHIVE_COLUMNS].sort_values(
         [
             "valid_date",
@@ -1719,10 +1745,14 @@ def update_daily_verification_archive(
             "cycle_utc"
         ]
     )
-    archive_df.to_csv(archive_path, index=False)
+    archive_df.to_csv(archive_path, index=False, float_format=CSV_FLOAT_FORMAT)
 
     if mirror_csv:
-        archive_df.to_csv(os.path.join(OUTPUT_DIR, mirror_csv), index=False)
+        archive_df.to_csv(
+            os.path.join(OUTPUT_DIR, mirror_csv),
+            index=False,
+            float_format=CSV_FLOAT_FORMAT
+        )
 
     return archive_df
 
