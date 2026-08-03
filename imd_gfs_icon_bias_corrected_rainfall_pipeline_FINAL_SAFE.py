@@ -48,6 +48,7 @@ GFS_DIR = "GFS_TMP"
 ICON_DIR = "ICON_TMP"
 # OUTPUT_DIR = "FINAL_OUTPUT"
 OUTPUT_DIR = "."
+ARCHIVE_OUTPUT_DIR = os.path.abspath(os.path.join("..", "ARCHIVE_DATA"))
 DAILY_VERIFICATION_CSV = "India_Daily_GFS_IMD_Rainfall_Verification.csv"
 DISTRICT_DAILY_VERIFICATION_ALIAS_CSV = (
     "India_Daily_GFS_IMD_District_Verification.csv"
@@ -82,6 +83,7 @@ os.makedirs(IMD_REALTIME_DIR, exist_ok=True)
 os.makedirs(GFS_DIR, exist_ok=True)
 os.makedirs(ICON_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
+os.makedirs(ARCHIVE_OUTPUT_DIR, exist_ok=True)
 
 FORECAST_HOURS = list(range(3, 49, 3))
 RESOLUTION = "0p25"
@@ -723,6 +725,31 @@ def ensure_columns(df, columns):
     return result[columns]
 
 
+def archive_output_path(filename):
+    return os.path.join(ARCHIVE_OUTPUT_DIR, filename)
+
+
+def read_existing_archive(filename, columns, dtype=None):
+    archive_path = archive_output_path(filename)
+    web_path = os.path.join(OUTPUT_DIR, filename)
+    source_path = archive_path if os.path.exists(archive_path) else web_path
+
+    if not os.path.exists(source_path):
+        return pd.DataFrame(columns=columns)
+
+    archive_df = pd.read_csv(source_path, dtype=dtype or {})
+    return ensure_columns(archive_df, columns)
+
+
+def archive_read_dtype():
+    return {
+        "forecast_issue_date": str,
+        "cycle_utc": str,
+        "valid_date": str,
+        "unit_id": str
+    }
+
+
 def normalize_daily_archive_identity(archive_df, unit_type):
     archive_df = ensure_columns(archive_df, DAILY_ARCHIVE_COLUMNS)
     archive_df["unit_type"] = archive_df["unit_type"].fillna(unit_type)
@@ -864,24 +891,47 @@ def prepare_3h_archive_rows(distribution_df, unit_type):
     return ensure_columns(archive_df, THREE_H_ARCHIVE_COLUMNS)
 
 
+def limit_3h_archive_cycles(archive_df):
+    if archive_df.empty:
+        return archive_df
+
+    cycle_keys = (
+        archive_df[["forecast_issue_date", "cycle_utc"]]
+        .drop_duplicates()
+        .sort_values(["forecast_issue_date", "cycle_utc"])
+        .tail(THREE_H_ARCHIVE_MAX_CYCLES)
+    )
+    return archive_df.merge(
+        cycle_keys,
+        on=["forecast_issue_date", "cycle_utc"],
+        how="inner"
+    )
+
+
+def sort_3h_archive(archive_df):
+    return archive_df[THREE_H_ARCHIVE_COLUMNS].sort_values(
+        [
+            "forecast_issue_date",
+            "cycle_utc",
+            "unit_type",
+            "unit_name",
+            "unit_id",
+            "from_hour",
+            "to_hour"
+        ]
+    )
+
+
 def update_3h_archive(distribution_df, unit_type, archive_csv):
-    archive_path = os.path.join(OUTPUT_DIR, archive_csv)
+    web_archive_path = os.path.join(OUTPUT_DIR, archive_csv)
+    full_archive_path = archive_output_path(archive_csv)
     latest_df = prepare_3h_archive_rows(distribution_df, unit_type)
 
-    if os.path.exists(archive_path):
-        archive_df = pd.read_csv(
-            archive_path,
-            dtype={
-                "forecast_issue_date": str,
-                "cycle_utc": str,
-                "valid_date": str,
-                "unit_id": str
-            }
-        )
-        archive_df = ensure_columns(archive_df, THREE_H_ARCHIVE_COLUMNS)
-    else:
-        archive_df = pd.DataFrame(columns=THREE_H_ARCHIVE_COLUMNS)
-
+    archive_df = read_existing_archive(
+        archive_csv,
+        THREE_H_ARCHIVE_COLUMNS,
+        dtype=archive_read_dtype()
+    )
     archive_df = pd.concat([archive_df, latest_df], ignore_index=True)
     archive_df["cycle_utc"] = archive_df["cycle_utc"].astype(str).str.zfill(2)
     archive_df["forecast_issue_date"] = (
@@ -899,32 +949,22 @@ def update_3h_archive(distribution_df, unit_type, archive_csv):
         ],
         keep="last"
     )
-    cycle_keys = (
-        archive_df[["forecast_issue_date", "cycle_utc"]]
-        .drop_duplicates()
-        .sort_values(["forecast_issue_date", "cycle_utc"])
-        .tail(THREE_H_ARCHIVE_MAX_CYCLES)
-    )
-    archive_df = archive_df.merge(
-        cycle_keys,
-        on=["forecast_issue_date", "cycle_utc"],
-        how="inner"
-    )
-    archive_df = archive_df[THREE_H_ARCHIVE_COLUMNS].sort_values(
-        [
-            "forecast_issue_date",
-            "cycle_utc",
-            "unit_type",
-            "unit_name",
-            "unit_id",
-            "from_hour",
-            "to_hour"
-        ]
-    )
-    archive_df.to_csv(archive_path, index=False)
 
-    return archive_df
+    full_archive_df = sort_3h_archive(archive_df)
+    full_archive_df.to_csv(
+        full_archive_path,
+        index=False,
+        float_format=CSV_FLOAT_FORMAT
+    )
 
+    web_archive_df = sort_3h_archive(limit_3h_archive_cycles(full_archive_df))
+    web_archive_df.to_csv(
+        web_archive_path,
+        index=False,
+        float_format=CSV_FLOAT_FORMAT
+    )
+
+    return web_archive_df
 
 def limit_daily_archive_dates(archive_df, unit_type):
     max_valid_dates = DAILY_ARCHIVE_MAX_VALID_DATES_BY_UNIT.get(unit_type, 365)
@@ -1694,28 +1734,34 @@ def add_observed_values(archive_df, unit_type):
     return archive_df
 
 
+def sort_daily_archive(archive_df):
+    return archive_df[DAILY_ARCHIVE_COLUMNS].sort_values(
+        [
+            "valid_date",
+            "unit_type",
+            "unit_name",
+            "unit_id",
+            "forecast_issue_date",
+            "cycle_utc"
+        ]
+    )
+
+
 def update_daily_verification_archive(
     latest_df,
     unit_type,
     archive_csv,
     mirror_csv=None
 ):
-    archive_path = os.path.join(OUTPUT_DIR, archive_csv)
+    web_archive_path = os.path.join(OUTPUT_DIR, archive_csv)
+    full_archive_path = archive_output_path(archive_csv)
     daily_df = prepare_daily_archive_rows(latest_df, unit_type)
 
-    if os.path.exists(archive_path):
-        archive_df = pd.read_csv(
-            archive_path,
-            dtype={
-                "forecast_issue_date": str,
-                "cycle_utc": str,
-                "valid_date": str,
-                "unit_id": str
-            }
-        )
-    else:
-        archive_df = pd.DataFrame(columns=DAILY_ARCHIVE_COLUMNS)
-
+    archive_df = read_existing_archive(
+        archive_csv,
+        DAILY_ARCHIVE_COLUMNS,
+        dtype=archive_read_dtype()
+    )
     archive_df = pd.concat([archive_df, daily_df], ignore_index=True)
     archive_df = normalize_daily_archive_identity(archive_df, unit_type)
     archive_df["rain_forecast_daily_mm"] = (
@@ -1733,28 +1779,30 @@ def update_daily_verification_archive(
         keep="last"
     )
 
-    archive_df = add_observed_values(archive_df, unit_type)
-    archive_df = limit_daily_archive_dates(archive_df, unit_type)
-    archive_df = archive_df[DAILY_ARCHIVE_COLUMNS].sort_values(
-        [
-            "valid_date",
-            "unit_type",
-            "unit_name",
-            "unit_id",
-            "forecast_issue_date",
-            "cycle_utc"
-        ]
+    full_archive_df = sort_daily_archive(add_observed_values(archive_df, unit_type))
+    full_archive_df.to_csv(
+        full_archive_path,
+        index=False,
+        float_format=CSV_FLOAT_FORMAT
     )
-    archive_df.to_csv(archive_path, index=False, float_format=CSV_FLOAT_FORMAT)
+
+    web_archive_df = sort_daily_archive(
+        limit_daily_archive_dates(full_archive_df, unit_type)
+    )
+    web_archive_df.to_csv(
+        web_archive_path,
+        index=False,
+        float_format=CSV_FLOAT_FORMAT
+    )
 
     if mirror_csv:
-        archive_df.to_csv(
+        web_archive_df.to_csv(
             os.path.join(OUTPUT_DIR, mirror_csv),
             index=False,
             float_format=CSV_FLOAT_FORMAT
         )
 
-    return archive_df
+    return web_archive_df
 
 # ------------------------------------------------------------------
 # STEP 2: GFS FORECAST (NEXT 24 HOURS)
