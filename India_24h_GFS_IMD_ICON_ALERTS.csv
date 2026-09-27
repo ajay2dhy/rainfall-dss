@@ -1,2 +1,1 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_raw,alert_gfs_bc,alert_icon,gfs_cal_factor,gfs_cal_threshold_mm,gfs_cal_samples,rain_gfs_cal_mm,alert_gfs_cal,date,cycle_utc
-Mizoram,Saiha,12.395833333333334,7.0360390076490305,0.5676132308691655,7.0360390076490305,0.0,MODERATE,NO ALERT,NO ALERT,1.0795149597643707,12.0,78,13.38148752207918,MODERATE,20260927,12
