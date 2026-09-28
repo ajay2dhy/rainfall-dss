@@ -1,1 +1,2 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_raw,alert_gfs_bc,alert_icon,gfs_cal_factor,gfs_cal_threshold_mm,gfs_cal_samples,rain_gfs_cal_mm,alert_gfs_cal,date,cycle_utc
+Maharashtra,Raygad,3.5625,11.807937529560638,3.0,10.6875,0.0,NO ALERT,MODERATE,NO ALERT,2.5174240887995296,12.0,30,3.5625,NO ALERT,20260928,00
