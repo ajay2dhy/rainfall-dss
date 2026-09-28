@@ -1,2 +1,3 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_raw,alert_gfs_bc,alert_icon,gfs_cal_factor,gfs_cal_threshold_mm,gfs_cal_samples,rain_gfs_cal_mm,alert_gfs_cal,date,cycle_utc
-Maharashtra,Raygad,3.5625,11.807937529560638,3.0,10.6875,0.0,NO ALERT,MODERATE,NO ALERT,2.5174240887995296,12.0,30,3.5625,NO ALERT,20260928,00
+Maharashtra,Raygad,4.45,11.807937529560638,2.653469107766435,11.807937529560638,0.0,NO ALERT,MODERATE,NO ALERT,2.5174240887995296,12.0,30,4.45,NO ALERT,20260928,06
+Tamil Nadu,Dindigul,15.515625,1.8349758311417208,0.3,4.6546875,0.0,MODERATE,NO ALERT,NO ALERT,0.45731502896819487,12.0,4,7.095528496334649,NO ALERT,20260928,06
