@@ -1,2 +1,1 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_raw,alert_gfs_bc,alert_icon,gfs_cal_factor,gfs_cal_threshold_mm,gfs_cal_samples,rain_gfs_cal_mm,alert_gfs_cal,date,cycle_utc
-Andaman & Nicobar,North & Middle Andaman,11.7125,0.0,0.3,3.51375,0.0,MODERATE,NO ALERT,NO ALERT,0.25,12.0,53,11.7125,MODERATE,20261011,18
