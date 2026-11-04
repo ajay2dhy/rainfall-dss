@@ -7,3 +7,6 @@ IMD_Rainfall/realtime_rain/*.grd
 data/*.sbn
 data/*.sbx
 data/*.shp.xml
+
+run_details.txt
+*.log
