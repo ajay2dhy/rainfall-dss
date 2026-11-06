@@ -16,6 +16,7 @@ Models  : GFS (IMD bias-corrected) + ICON (raw, optional)
 import os
 import glob
 import shutil
+import time
 import requests
 import imdlib as imd
 import xarray as xr
@@ -348,17 +349,33 @@ def get_latest_gfs_datetime():
 
     raise RuntimeError("No complete GFS cycle available")
 
-def download_gfs(date, cycle, fh):
+def download_gfs(date, cycle, fh, max_retries=5):
     fname = f"gfs.t{cycle}z.pgrb2.{RESOLUTION}.f{fh:03d}"
     url = gfs_file_url(date, cycle, fh)
     path = os.path.join(GFS_DIR, fname)
 
-    r = requests.get(url, stream=True, timeout=60)
-    r.raise_for_status()
-
-    with open(path, "wb") as f:
-        for c in r.iter_content(8192):
-            f.write(c)
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"Downloading GFS fh{fh:03d} (attempt {attempt}/{max_retries})...")
+            with requests.get(url, stream=True, timeout=(15, 120)) as r:
+                r.raise_for_status()
+                with open(path, "wb") as f:
+                    for c in r.iter_content(chunk_size=1048576):
+                        if c:
+                            f.write(c)
+            if os.path.exists(path) and os.path.getsize(path) > 0:
+                return path
+        except (requests.RequestException, OSError) as exc:
+            print(f"GFS download warning fh{fh:03d} (attempt {attempt}/{max_retries}): {exc}")
+            if os.path.exists(path):
+                try:
+                    os.remove(path)
+                except OSError:
+                    pass
+            if attempt < max_retries:
+                time.sleep(3 * attempt)
+            else:
+                raise
 
     return path
 
