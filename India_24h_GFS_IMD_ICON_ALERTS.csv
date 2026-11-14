@@ -1,2 +1,2 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_raw,alert_gfs_bc,alert_icon,gfs_cal_factor,gfs_cal_threshold_mm,gfs_cal_samples,rain_gfs_cal_mm,alert_gfs_cal,date,cycle_utc
-Andaman & Nicobar,Nicobar,17.9375,0.0,0.3,5.38125,0.0,MODERATE,NO ALERT,NO ALERT,0.25,12.0,40,4.484375,NO ALERT,20261114,00
+Andaman & Nicobar,Nicobar,30.1875,0.0,0.3,9.05625,0.0,MODERATE,NO ALERT,NO ALERT,0.25,12.0,40,7.546875,NO ALERT,20261114,06
