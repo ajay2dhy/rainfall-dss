@@ -1,2 +1,2 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_raw,alert_gfs_bc,alert_icon,gfs_cal_factor,gfs_cal_threshold_mm,gfs_cal_samples,rain_gfs_cal_mm,alert_gfs_cal,date,cycle_utc
-West Bengal,Kalimpong,4.90625,10.116849438519509,2.0620330065772245,10.116849438519507,0.0,NO ALERT,MODERATE,NO ALERT,0.9986615585657015,12.0,90,4.90625,NO ALERT,20261115,18
+West Bengal,Kalimpong,6.09375,10.116849438519509,1.6602009335006374,10.116849438519509,0.0,NO ALERT,MODERATE,NO ALERT,0.9986615585657015,12.0,90,6.09375,NO ALERT,20261116,00
