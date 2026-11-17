@@ -1,1 +1,2 @@
 state,district,rain_gfs_mm,imd_mean_mm,bias_factor,rain_gfs_bc_mm,rain_icon_mm,alert_gfs_raw,alert_gfs_bc,alert_icon,gfs_cal_factor,gfs_cal_threshold_mm,gfs_cal_samples,rain_gfs_cal_mm,alert_gfs_cal,date,cycle_utc
+Kerala,Kottayam,5.020833333333333,11.370481300741844,2.2646601760813634,11.370481300741845,0.0,NO ALERT,MODERATE,NO ALERT,2.068032487680234,12.0,31,5.020833333333333,NO ALERT,20261117,12
